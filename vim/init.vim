@@ -1,5 +1,5 @@
 if exists('g')
-    " VSCode extension
+	" VSCode extension
 else 
 	" ordinary neovim
 endif
