@@ -1,0 +1,11 @@
+[Unit]
+Description=kmonad keychron k2 keyboard config
+
+[Service]
+Restart=always
+RestartSec=3
+ExecStart=/usr/local/bin/kmonad /home/huen/.config/kmonad/keychron-k2.kbd
+Nice=-20
+
+[Install]
+WantedBy=default.target
