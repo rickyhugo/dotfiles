@@ -15,4 +15,6 @@ Various configs
 
 ## Others
 - fzf
+- bat
+- tree
 - regolith-desktop
