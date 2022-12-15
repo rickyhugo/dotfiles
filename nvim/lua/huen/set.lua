@@ -1,14 +1,16 @@
 vim.g.mapleader = " "
 
-vim.t_Co = 256
-
 vim.scriptencoding = "utf-8"
 vim.opt.encoding = "utf-8"
 
 vim.opt.number = true
 vim.opt.relativenumber = true
 
+vim.t_Co = 256
 vim.opt.termguicolors = true
+
+vim.opt.clipboard = "unnamedplus"
+
 vim.opt.title = true
 vim.opt.autoindent = true
 vim.opt.hlsearch = true
