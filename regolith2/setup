@@ -2,7 +2,6 @@ sudo apt install regolith-look-lascaille
 sudo apt install regolith-compositor-picom-glx
 sudo apt install i3xrocks-battery i3xrocks-media-player i3xrocks-volume
 sudo apt remove i3xrocks-net-traffic
-sudo apt install regolith-compositor-picom-glx
 
 mkdir -p ~/.config/regolith2/i3/config.d
 touch ~/.config/regolith2/i3/config.d/99_custom
