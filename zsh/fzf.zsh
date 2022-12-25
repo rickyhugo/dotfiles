@@ -1,1 +1,0 @@
-/home/huen/.oh-my-zsh/custom/fzf.zsh
