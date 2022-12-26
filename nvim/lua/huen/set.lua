@@ -55,12 +55,3 @@ vim.g.mapleader = " "
 vim.g.python3_host_prog = "/home/huen/.pyenv/versions/neovim/bin/python"
 
 vim.g.loaded_perl_provider = 0
-
--- format on save
-vim.api.nvim_create_autocmd(
-    { "BufWritePre" },
-    {
-        pattern = { "<buffer>" },
-        command = "lua vim.lsp.buf.format( {async = false} )"
-    }
-)

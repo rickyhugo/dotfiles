@@ -114,11 +114,6 @@ _G.packer_plugins = {
     path = "/home/huen/.local/share/nvim/site/pack/packer/start/harpoon",
     url = "https://github.com/ThePrimeagen/harpoon"
   },
-  ["isort.vim"] = {
-    loaded = true,
-    path = "/home/huen/.local/share/nvim/site/pack/packer/start/isort.vim",
-    url = "https://github.com/brentyi/isort.vim"
-  },
   ["lsp-zero.nvim"] = {
     loaded = true,
     path = "/home/huen/.local/share/nvim/site/pack/packer/start/lsp-zero.nvim",
@@ -129,10 +124,20 @@ _G.packer_plugins = {
     path = "/home/huen/.local/share/nvim/site/pack/packer/start/mason-lspconfig.nvim",
     url = "https://github.com/williamboman/mason-lspconfig.nvim"
   },
+  ["mason-null-ls.nvim"] = {
+    loaded = true,
+    path = "/home/huen/.local/share/nvim/site/pack/packer/start/mason-null-ls.nvim",
+    url = "https://github.com/jayp0521/mason-null-ls.nvim"
+  },
   ["mason.nvim"] = {
     loaded = true,
     path = "/home/huen/.local/share/nvim/site/pack/packer/start/mason.nvim",
     url = "https://github.com/williamboman/mason.nvim"
+  },
+  ["null-ls.nvim"] = {
+    loaded = true,
+    path = "/home/huen/.local/share/nvim/site/pack/packer/start/null-ls.nvim",
+    url = "https://github.com/jose-elias-alvarez/null-ls.nvim"
   },
   ["nvim-cmp"] = {
     loaded = true,
