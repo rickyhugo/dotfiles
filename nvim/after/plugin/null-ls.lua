@@ -8,27 +8,27 @@ local augroup = vim.api.nvim_create_augroup("LspFormatting", {})
 
 null_ls.setup({
 	sources = {
-        -- formatting
+		-- formatting
 		formatting.yamlfmt,
 		formatting.taplo,
 		formatting.shellharden,
 		formatting.beautysh,
 		formatting.fixjson,
-		formatting.prettier,
 		formatting.rustfmt,
 		formatting.stylua,
+		formatting.prettier,
 		formatting.black,
 		formatting.isort,
+		-- diagnostics
 		diagnostics.eslint_d.with({
 			-- only enable eslint if root has .eslintrc.cjs
 			condition = function(utils)
 				return utils.root_has_file(".eslintrc.cjs")
 			end,
 		}),
-        -- diagnostics
-		diagnostics.flake8,
-		diagnostics.pylint,
 		diagnostics.mypy,
+        diagnostics.pylint,
+        diagnostics.flake8,
 		diagnostics.alex,
 		diagnostics.checkmake,
 		diagnostics.hadolint,

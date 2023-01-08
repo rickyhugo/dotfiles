@@ -55,3 +55,13 @@ vim.g.mapleader = " "
 vim.g.python3_host_prog = "/home/huen/.pyenv/versions/neovim/bin/python"
 
 vim.g.loaded_perl_provider = 0
+
+-- reset terminal view on close
+vim.cmd([[
+    augroup kitty_terminal_view
+        autocmd!
+        au VimLeave * :silent !kitty @ set-spacing padding=15
+        au VimLeave * :silent !kitty @ set-background-opacity 0.85
+        au VimLeave * :silent !kitty @ set-colors background=black
+    augroup END
+]])

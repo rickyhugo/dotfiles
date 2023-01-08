@@ -1,9 +1,7 @@
-function ColorMyPencils(color)
-    color = color or "rose-pine"
-    vim.cmd.colorscheme(color)
+local theme = "mocha"
+local palette = require("catppuccin.palettes").get_palette(theme)
 
-    -- vim.api.nvim_set_hl(0, "Normal", { bg = "none" })
-    -- vim.api.nvim_set_hl(0, "NormalFloat", { bg = "none" })
-end
-
-ColorMyPencils()
+vim.cmd.colorscheme("catppuccin-" .. theme)
+vim.cmd("silent !kitty @ set-background-opacity 1.0")
+vim.cmd("silent !kitty @ set-spacing padding-top=5")
+vim.cmd("silent !kitty @ set-colors background=\\" .. palette.base)
