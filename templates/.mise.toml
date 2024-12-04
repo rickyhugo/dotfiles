@@ -5,4 +5,3 @@ python = "3.12"
 _.python.venv = { path = ".venv", create = false }
 
 GH_CONFIG_DIR = "/home/huen/.config/gh/personal"
-GIT_SSH_COMMAND = "ssh -i ~/.ssh/id_ed25519_personal"

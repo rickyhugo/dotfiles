@@ -1,3 +1,4 @@
 config/gh/** filter=git-crypt diff=git-crypt
 config/git/** filter=git-crypt diff=git-crypt
+config/ssh/** filter=git-crypt diff=git-crypt
 config/snowflake/** filter=git-crypt diff=git-crypt
