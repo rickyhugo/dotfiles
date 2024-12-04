@@ -3,9 +3,5 @@ path = "/home/huen/lendo/dev"
 depth = 10
 
 [[search_dirs]]
-path = "/home/huen/.dotfiles"
-depth = 10
-
-[[search_dirs]]
 path = "/home/huen/personal/dev"
 depth = 10
