@@ -1,0 +1,33 @@
+{
+  "pythonVersion": "3.12",
+
+  "venvPath": "./",
+  "venv": ".venv",
+
+  "include": ["src"],
+  "typeCheckingMode": "basic",
+
+  "ignore": ["**/*.ipynb"],
+
+  "reportPrivateUsage": "warning",
+  "reportCallInDefaultInitializer": "error",
+  "reportImplicitOverride": "error",
+  "reportImplicitStringConcatenation": "none",
+  "reportMissingSuperCall": "none",
+  "reportPropertyTypeMismatch": "error",
+  "reportShadowedImports": "error",
+  "reportUninitializedInstanceVariable": "error",
+  "reportUnnecessaryTypeIgnoreComment": "warning",
+  "reportUnusedCallResult": "warning",
+  "reportConstantRedefinition": "none",
+  "reportFunctionMemberAccess": "error",
+  "reportMissingTypeArgument": "error",
+  "reportMissingParameterType": "error",
+  "reportUnusedClass": "none",
+  "reportUnusedImport": "none",
+  "reportUnusedFunction": "none",
+  "reportUnusedVariable": "none",
+  "reportUntypedBaseClass": "error",
+  "reportDuplicateImport": "error",
+  "reportDeprecated": "error"
+}

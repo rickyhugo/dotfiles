@@ -1,0 +1,17 @@
+# BEGIN_KITTY_THEME
+# Catppuccin-Mocha
+include current-theme.conf
+# END_KITTY_THEME
+
+# hot stuff
+# font_family FiraCode Nerd Font Mono
+font_family Iosevka Term
+disable_ligatures cursor
+
+window_padding_width 5 10
+font_size 10
+map ctrl+shift+plus change_font_size all +0.5
+map ctrl+shift+minus change_font_size all -0.5
+
+# turnoff psychotic droplet sound
+enable_audio_bell no

@@ -1,0 +1,13 @@
+[tools]
+node = "latest"
+python = "latest"
+go = "latest"
+ruby = "latest"
+java = "21"
+
+[env]
+GH_CONFIG_DIR = "/home/huen/.config/gh/work"
+GIT_SSH_COMMAND = "ssh -i ~/.ssh/huen"
+
+[settings]
+experimental = true

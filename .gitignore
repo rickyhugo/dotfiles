@@ -1,0 +1,14 @@
+lazy-lock.json
+
+!.mise.toml
+!pyrightconfig.json
+!.taplo.toml
+!templates/.prettierrc.toml
+
+!config/vscode/.config/Code
+config/vscode/.config/Code/*
+!config/vscode/.config/Code/User
+config/vscode/.config/Code/User/*
+!config/vscode/.config/Code/User/extensions.sh
+!config/vscode/.config/Code/User/settings.json
+!config/vscode/.config/Code/User/keybindings.json

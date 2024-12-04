@@ -1,0 +1,180 @@
+{
+  "[json][jsonc][markdown][toml][yaml]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "always"
+    },
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true,
+    "editor.formatOnType": false
+  },
+  "[python]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    },
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.formatOnType": false
+  },
+  "catppuccin.accentColor": "flamingo",
+  "catppuccin.bracketMode": "neovim",
+  "catppuccin.italicKeywords": false,
+  "editor.fontFamily": "JetBrains Mono",
+  "editor.fontLigatures": true,
+  "editor.fontSize": 14,
+  "editor.formatOnSave": true,
+  "editor.inlineSuggest.enabled": true,
+  "editor.lineNumbers": "relative",
+  "editor.minimap.enabled": false,
+  "editor.rulers": [80],
+  "editor.stickyScroll.enabled": true,
+  "emojisense.languages": {
+    "*": true
+  },
+  "explorer.confirmDelete": false,
+  "explorer.confirmDragAndDrop": false,
+  "git.confirmSync": false,
+  "git.openRepositoryInParentFolders": "never",
+  "jupyter.askForKernelRestart": false,
+  "jupyter.runStartupCommands": ["%load_ext autoreload", "%autoreload 2"],
+  "jupyter.widgetScriptSources": ["jsdelivr.com", "unpkg.com"],
+  "notebook.defaultFormatter": "charliermarsh.ruff",
+  "notebook.cellToolbarLocation": {
+    "default": "right",
+    "jupyter-notebook": "left"
+  },
+  "notebook.codeActionsOnSave": {
+    "notebook.source.fixAll": "explicit",
+    "notebook.source.organizeImports": "explicit"
+  },
+  "notebook.formatOnSave.enabled": true,
+  "notebook.output.textLineLimit": 500,
+  "python.analysis.autoImportCompletions": true,
+  "python.languageServer": "Pylance",
+  "python.testing.pytestEnabled": true,
+  "ruff.organizeImports": true,
+  "ruff.showNotifications": "onError",
+  "ruff.fixAll": true,
+  "terminal.integrated.fontFamily": "JetBrains Mono",
+  "terminal.integrated.fontSize": 14,
+  "terminal.integrated.inheritEnv": false,
+  "vim.easymotion": false,
+  "vim.hlsearch": false,
+  "vim.incsearch": true,
+  "vim.leader": "<space>",
+  "vim.normalModeKeyBindingsNonRecursive": [
+    {
+      "before": ["leader", "w"],
+      "commands": ["workbench.action.files.save"]
+    },
+    {
+      "before": ["K"],
+      "commands": ["editor.action.showHover"]
+    },
+    {
+      "before": ["g", "r"],
+      "commands": ["editor.action.goToReferences"]
+    },
+    {
+      "before": ["[", "d"],
+      "commands": ["editor.action.marker.prev"],
+      "when": "editorFocus"
+    },
+    {
+      "before": ["]", "d"],
+      "commands": ["editor.action.marker.next"],
+      "when": "editorFocus"
+    },
+    {
+      "before": ["leader", "t", "t"],
+      "commands": ["workbench.view.explorer"],
+      "when": "viewContainer.workbench.view.explorer.enabled"
+    },
+    {
+      "before": ["leader", "b"],
+      "commands": ["workbench.action.toggleSidebarVisibility"],
+      "when": "editorFocus"
+    },
+    {
+      "after": ["<C-d>", "z", "z"],
+      "before": ["<C-d>"]
+    },
+    {
+      "after": ["<C-u>", "z", "z"],
+      "before": ["<C-u>"]
+    },
+    {
+      "before": ["leader", "z"],
+      "commands": ["workbench.action.toggleZenMode"]
+    },
+    {
+      "before": ["<C-r>"],
+      "commands": ["undo"]
+    },
+    {
+      "before": ["<C-h>"],
+      "commands": ["workbench.action.navigateLeft"]
+    },
+    {
+      "before": ["<C-j>"],
+      "commands": ["workbench.action.navigateDown"]
+    },
+    {
+      "before": ["<C-l>"],
+      "commands": ["workbench.action.navigateUp"]
+    },
+    {
+      "before": ["<C-l>"],
+      "commands": ["workbench.action.navigateRight"]
+    },
+    {
+      "after": [
+        ":",
+        "%",
+        "s",
+        "/",
+        "\\",
+        "<",
+        "<C-r>",
+        "<C-w>",
+        "\\",
+        ">",
+        "/",
+        "<C-r>",
+        "<C-w>",
+        "/",
+        "g",
+        "I",
+        "<Left>",
+        "<Left>",
+        "<Left>"
+      ],
+      "before": ["leader", "s"]
+    },
+    {
+      "before": ["z", "z"],
+      "commands": ["notebook.centerActiveCell"],
+      "when": "notebookEditorFocused"
+    }
+  ],
+  "vim.surround": true,
+  "vim.useCtrlKeys": true,
+  "vim.useSystemClipboard": true,
+  "window.titleBarStyle": "native",
+  "window.zoomLevel": -0.5,
+  "workbench.colorTheme": "Catppuccin Mocha",
+  "workbench.editor.enablePreview": false,
+  "workbench.iconTheme": "catppuccin-mocha",
+  "workbench.sideBar.location": "right",
+  "zenMode.hideLineNumbers": false,
+  "zenMode.hideStatusBar": false,
+  "workbench.startupEditor": "none",
+  "keyboard.dispatch": "keyCode",
+  "snowflake.connectionsConfigFile": "/home/huen/.config/snowflake/connections.toml",
+  "autoDocstring.docstringFormat": "numpy",
+  "autoDocstring.includeExtendedSummary": true,
+  "github.copilot.advanced": {},
+  "python.defaultInterpreterPath": "/home/huen/lendo/dev/lendo-data-ml/ml-core/.venv",
+  "redhat.telemetry.enabled": false,
+  "notebook.lineNumbers": "on"
+}
