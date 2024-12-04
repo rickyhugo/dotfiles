@@ -1,4 +1,3 @@
 config/gh/** filter=git-crypt diff=git-crypt
 config/git/** filter=git-crypt diff=git-crypt
 config/snowflake/** filter=git-crypt diff=git-crypt
-README.md filter=git-crypt diff=git-crypt
