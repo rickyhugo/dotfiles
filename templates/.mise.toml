@@ -5,7 +5,3 @@ python = "3.12"
 _.python.venv = { path = ".venv", create = false }
 
 GH_CONFIG_DIR = "/home/huen/.config/gh/personal"
-GIT_AUTHOR_NAME = "Your Name"
-GIT_AUTHOR_EMAIL = "your.email@example.com"
-GIT_COMMITER_NAME = "Your Name"
-GIT_COMMITER_EMAIL = "your.email@example.com"
