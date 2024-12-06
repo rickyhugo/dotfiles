@@ -20,3 +20,4 @@ git-crypt
 unclutter
 tree
 feh
+htop
