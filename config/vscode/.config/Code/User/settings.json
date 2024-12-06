@@ -173,7 +173,6 @@
   "snowflake.connectionsConfigFile": "/home/huen/.config/snowflake/connections.toml",
   "autoDocstring.docstringFormat": "numpy",
   "autoDocstring.includeExtendedSummary": true,
-  "github.copilot.advanced": {},
   "python.defaultInterpreterPath": "/home/huen/lendo/dev/lendo-data-ml/ml-core/.venv",
   "redhat.telemetry.enabled": false,
   "notebook.lineNumbers": "on"

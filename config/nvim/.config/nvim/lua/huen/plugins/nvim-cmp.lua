@@ -27,12 +27,15 @@ return {
 			"hrsh7th/cmp-emoji",
 			"kristijanhusak/vim-dadbod-completion",
 		},
+
+		-- ai
 		{
-			"Exafunction/codeium.nvim",
-			cmd = "Codeium",
-			build = ":Codeium Auth",
-			opts = {},
+			"zbirenbaum/copilot-cmp",
+			config = function()
+				require("copilot_cmp").setup()
+			end,
 		},
+		-- "Exafunction/codeium.nvim",
 	},
 	config = function()
 		local luasnip = require("luasnip")
@@ -83,7 +86,10 @@ return {
 				{ name = "nvim_lua" },
 				{ name = "path" },
 				{ name = "emoji" },
-				{ name = "codeium" },
+
+				-- ai
+				-- { name = "codeium" },
+				{ name = "copilot" },
 			},
 
 			window = {
@@ -101,10 +107,32 @@ return {
 						luasnip = "[SNIP]",
 						path = "[PATH]",
 						emoji = "[EMOJI]",
-						codeium = "[COD]",
+
+						-- ai
+						-- codeium = "[AI]",
+						copilot = "[AI]",
 					},
-					symbol_map = { Codeium = "" },
+					symbol_map = { Codeium = "", Copilot = "" },
 				}),
+			},
+
+			-- ai
+			sorting = {
+				priority_weight = 2,
+				comparators = {
+					require("copilot_cmp.comparators").prioritize,
+
+					-- Below is the default comparator list and order for nvim-cmp
+					cmp.config.compare.offset,
+					cmp.config.compare.exact,
+					cmp.config.compare.score,
+					cmp.config.compare.recently_used,
+					cmp.config.compare.locality,
+					cmp.config.compare.kind,
+					cmp.config.compare.sort_text,
+					cmp.config.compare.length,
+					cmp.config.compare.order,
+				},
 			},
 		})
 
