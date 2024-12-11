@@ -143,24 +143,24 @@ return {
 			"pyrightconfig.json",
 		}
 
-		local function pyright()
-			require("lspconfig").pyright.setup({
-				root_dir = require("lspconfig.util").root_pattern(python_lsp_root),
-				settings = {
-					pyright = {
-						disableOrganizeImports = true,
-					},
-					python = {
-						analysis = {
-							autoSearchPaths = true,
-							useLibraryCodeForTypes = false,
-							diagnosticMode = "openFilesOnly",
-							logLevel = "Error",
-						},
-					},
-				},
-			})
-		end
+		-- local function pyright()
+		-- 	require("lspconfig").pyright.setup({
+		-- 		root_dir = require("lspconfig.util").root_pattern(python_lsp_root),
+		-- 		settings = {
+		-- 			pyright = {
+		-- 				disableOrganizeImports = true,
+		-- 			},
+		-- 			python = {
+		-- 				analysis = {
+		-- 					autoSearchPaths = true,
+		-- 					useLibraryCodeForTypes = false,
+		-- 					diagnosticMode = "openFilesOnly",
+		-- 					logLevel = "Error",
+		-- 				},
+		-- 			},
+		-- 		},
+		-- 	})
+		-- end
 
 		local function basedpyright()
 			require("lspconfig").basedpyright.setup({
@@ -274,7 +274,6 @@ return {
 				"basedpyright",
 				"ruff",
 				"rust_analyzer",
-				"ansiblels",
 				"gopls",
 			},
 			automatic_installation = true,
