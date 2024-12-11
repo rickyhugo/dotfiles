@@ -1,7 +1,3 @@
 [[search_dirs]]
-path = "/home/huen/lendo/dev"
-depth = 10
-
-[[search_dirs]]
-path = "/home/huen/personal/dev"
+path = "/home/huen/dev"
 depth = 10

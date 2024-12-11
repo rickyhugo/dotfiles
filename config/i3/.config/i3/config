@@ -242,18 +242,14 @@ exec_always --no-startup-id unclutter -root -reset -idle 1.5
 # move workspace to monitor
 bindsym $mod+m move workspace to output left
 
-set $monitor_id DP-1-1
 set $laptop_id eDP-1
-set $laptop_res 1920x1080
-
-# default screen setup
-exec_always --no-startup-id xrandr --output $laptop_id --auto --primary --mode $laptop_res
+set $monitor_id DP-2
 
 # connect external monitor
 bindsym $mod+Shift+s exec --no-startup-id xrandr --output $monitor_id --auto --primary --left-of $laptop_id
 
 # reset to laptop monitor
-bindsym $mod+Shift+x exec --no-startup-id xrandr --output $laptop_id --auto --primary --mode $laptop_res --output $monitor_id --off
+bindsym $mod+Shift+x exec --no-startup-id xrandr --output $laptop_id --auto --primary --output $monitor_id --off
 
 # set screen resolution
 bindsym $mod+Shift+p exec --no-startup-id xrandr --output $laptop_id --auto --mode $laptop_res
@@ -268,11 +264,10 @@ bindsym Control+$alt+b exec --no-startup-id blueman-manager
 bindsym Control+$alt+p exec --no-startup-id flameshot gui
 
 # startup layout
-assign [class="^Slack$"] 3
 assign [class="^Spotify$"] 5
-assign [class="^Appgate SDP$"] 8
-exec --no-startup-id i3-msg 'exec --no-startup-id slack'
-exec --no-startup-id i3-msg 'exec --no-startup-id appgate'
+
+# assign [class="^Slack$"] 3
+# exec --no-startup-id i3-msg 'exec --no-startup-id slack'
 
 # open mail/calendar/spotify/slack
 bindsym Control+$alt+w exec --no-startup-id google-chrome-stable --new-window 'https://mail.google.com/mail'
