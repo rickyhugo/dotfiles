@@ -42,7 +42,6 @@ zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'
 zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
 zstyle ':completion:*' menu no
 zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls --color $realpath'
-zstyle ':fzf-tab:complete:__zoxide_z:*' fzf-preview 'ls --color $realpath'
 
 # ⚡
 alias vim='nvim'
@@ -75,7 +74,7 @@ setopt hist_find_no_dups
 export FZF_DEFAULT_COMMAND="rg -uu --files -H"
 export FZF_PREVIEW_ADVANCED=true 
 export FZF_COMPLETION_TRIGGER=';'
-export TAPLO_CONFIG="$HOME/.dotfiles/templates/.taplo.toml"
+export TAPLO_CONFIG="$HOME/dev/dotfiles/templates/.taplo.toml"
 
 # ⏩
 export PATH="$PATH:$HOME/.local/bin" # misc
