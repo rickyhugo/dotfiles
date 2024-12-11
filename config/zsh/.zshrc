@@ -75,7 +75,7 @@ setopt hist_find_no_dups
 export FZF_DEFAULT_COMMAND="rg -uu --files -H"
 export FZF_PREVIEW_ADVANCED=true 
 export FZF_COMPLETION_TRIGGER=';'
-export TAPLO_CONFIG="$HOME/.dotfiles/templates/.taplo.toml"
+export TAPLO_CONFIG="$HOME/personal/dev/dotfiles/templates/.taplo.toml"
 
 # ⏩
 export PATH="$PATH:$HOME/.local/bin" # misc
