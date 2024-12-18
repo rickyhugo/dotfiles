@@ -63,12 +63,18 @@ return {
 
 				-- workaround for gopls not supporting semanticTokensProvider
 				-- https://github.com/golang/go/issues/54531#issuecomment-1464982242
-				if client.name == "gopls" and not client.server_capabilities.semanticTokensProvider then
+				if
+					client ~= nil
+					and client.name == "gopls"
+					and not client.server_capabilities.semanticTokensProvider
+				then
 					local semantic = client.config.capabilities.textDocument.semanticTokens
 					client.server_capabilities.semanticTokensProvider = {
 						full = true,
 						legend = {
+							---@diagnostic disable-next-line: need-check-nil
 							tokenModifiers = semantic.tokenModifiers,
+							---@diagnostic disable-next-line: need-check-nil
 							tokenTypes = semantic.tokenTypes,
 						},
 						range = true,

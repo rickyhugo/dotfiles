@@ -112,7 +112,7 @@ return {
 						-- codeium = "[AI]",
 						copilot = "[AI]",
 					},
-					symbol_map = { Codeium = "", Copilot = "" },
+					symbol_map = { Codeium = " ", Copilot = " " },
 				}),
 			},
 
