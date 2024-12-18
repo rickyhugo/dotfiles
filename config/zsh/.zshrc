@@ -10,19 +10,12 @@ fi
 source "${ZINIT_HOME}/zinit.zsh"
 
 # 🔌
-zinit wait lucid for \
-  Aloxaf/fzf-tab \
-  OMZP::tmux \
-  OMZP::git \
-  OMZP::ubuntu \
-  OMZP::colored-man-pages \
-  OMZL::directories.zsh # NOTE: `cd` aliases
-
 # NOTE: https://github.com/zdharma-continuum/fast-syntax-highlighting?tab=readme-ov-file#zinit
 # NOTE: set theme with `fast-theme XDG:catppuccin-mocha`
 zinit wait lucid light-mode for \
-  atinit"zicompinit; zicdreplay" \
+  atinit"ZINIT[COMPINIT_OPTS]=-C; zicompinit; zicdreplay -q" \
       zdharma-continuum/fast-syntax-highlighting \
+      OMZP::colored-man-pages \
   atload"_zsh_autosuggest_start" \
       zsh-users/zsh-autosuggestions \
   blockf atpull'zinit creinstall -q .' \
@@ -30,6 +23,13 @@ zinit wait lucid light-mode for \
 
 zinit ice compile'async.zsh' pick'async.zsh' src'pure.zsh'
 zinit light rickyhugo/pure
+
+zinit wait lucid for \
+  Aloxaf/fzf-tab \
+  OMZP::tmux \
+  OMZP::git \
+  OMZP::ubuntu \
+  OMZL::directories.zsh # NOTE: `cd` aliases
 
 zinit ice depth=1; zinit light jeffreytse/zsh-vi-mode
 
