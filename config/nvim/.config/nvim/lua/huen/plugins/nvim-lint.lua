@@ -19,7 +19,6 @@ return {
 			yaml = { "yamllint" },
 			lua = { "luacheck" },
 			python = { "mypy" },
-			ansible = { "ansible_lint" },
 			terrafrom = { "tflint" },
 			go = { "golangcilint" },
 			make = { "checkmake" },
