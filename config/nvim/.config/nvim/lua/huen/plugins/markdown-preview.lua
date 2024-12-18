@@ -7,4 +7,5 @@ return {
 	cmd = { "MarkdownPreviewToggle", "MarkdownPreview", "MarkdownPreviewStop" },
 	ft = { "markdown" },
 	keys = { { "<leader>mp", "<cmd>MarkdownPreviewToggle<CR>", desc = "Markdown preview" } },
+	enabled = true,
 }
