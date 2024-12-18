@@ -21,7 +21,7 @@ zinit wait lucid for \
 # NOTE: https://github.com/zdharma-continuum/fast-syntax-highlighting?tab=readme-ov-file#zinit
 # NOTE: set theme with `fast-theme XDG:catppuccin-mocha`
 zinit wait lucid light-mode for \
-  atinit"zicompinit; zicdreplay" \
+  atinit"ZINIT[COMPINIT_OPTS]=-C; zicompinit; zicdreplay" \
       zdharma-continuum/fast-syntax-highlighting \
   atload"_zsh_autosuggest_start" \
       zsh-users/zsh-autosuggestions \
