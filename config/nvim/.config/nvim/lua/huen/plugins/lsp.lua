@@ -101,6 +101,8 @@ return {
 				"gofumpt",
 				"goimports",
 				"golangci-lint",
+				"gomodifytags",
+				"impl",
 				"checkmake",
 			},
 		})
@@ -143,25 +145,6 @@ return {
 			"pyrightconfig.json",
 		}
 
-		-- local function pyright()
-		-- 	require("lspconfig").pyright.setup({
-		-- 		root_dir = require("lspconfig.util").root_pattern(python_lsp_root),
-		-- 		settings = {
-		-- 			pyright = {
-		-- 				disableOrganizeImports = true,
-		-- 			},
-		-- 			python = {
-		-- 				analysis = {
-		-- 					autoSearchPaths = true,
-		-- 					useLibraryCodeForTypes = false,
-		-- 					diagnosticMode = "openFilesOnly",
-		-- 					logLevel = "Error",
-		-- 				},
-		-- 			},
-		-- 		},
-		-- 	})
-		-- end
-
 		local function basedpyright()
 			require("lspconfig").basedpyright.setup({
 				root_dir = require("lspconfig.util").root_pattern(python_lsp_root),
@@ -193,7 +176,43 @@ return {
 
 		-- go
 		local function gopls()
-			require("lspconfig").gopls.setup({})
+			require("lspconfig").gopls.setup({
+				settings = {
+					gopls = {
+						gofumpt = true,
+						codelenses = {
+							gc_details = false,
+							generate = true,
+							regenerate_cgo = true,
+							run_govulncheck = true,
+							test = true,
+							tidy = true,
+							upgrade_dependency = true,
+							vendor = true,
+						},
+						hints = {
+							assignVariableTypes = true,
+							compositeLiteralFields = true,
+							compositeLiteralTypes = true,
+							constantValues = true,
+							functionTypeParameters = true,
+							parameterNames = true,
+							rangeVariableTypes = true,
+						},
+						analyses = {
+							nilness = true,
+							unusedparams = true,
+							unusedwrite = true,
+							useany = true,
+						},
+						usePlaceholders = true,
+						completeUnimported = true,
+						staticcheck = true,
+						directoryFilters = { "-.git", "-.vscode", "-.idea", "-.vscode-test", "-node_modules" },
+						semanticTokens = true,
+					},
+				},
+			})
 		end
 
 		-- typescript
@@ -270,7 +289,6 @@ return {
 				"docker_compose_language_service",
 				"taplo",
 				"marksman",
-				-- "pyright",
 				"basedpyright",
 				"ruff",
 				"rust_analyzer",
