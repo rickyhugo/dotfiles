@@ -122,6 +122,7 @@ return {
 				"goimports",
 				"gomodifytags",
 				"golangci-lint",
+				"golines",
 				"impl",
 				"checkmake",
 			},

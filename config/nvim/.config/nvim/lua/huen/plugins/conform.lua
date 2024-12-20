@@ -22,7 +22,7 @@ return {
 				sql = { "sqlfluff" },
 				toml = { "taplo" },
 				rust = { "rustfmt" },
-				go = { "goimports", "gofumpt" },
+				go = { "goimports", "gofumpt", "golines" },
 			},
 			format_on_save = {
 				lsp_fallback = true,
@@ -30,5 +30,8 @@ return {
 				timeout_ms = 500,
 			},
 		})
+		require("conform").formatters.golines = {
+			prepend_args = { "-m", "80" },
+		}
 	end,
 }
