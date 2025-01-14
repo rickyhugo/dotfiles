@@ -285,6 +285,7 @@ return {
 				"lua_ls",
 				"bashls",
 				"yamlls",
+				"jsonls",
 				"dockerls",
 				"docker_compose_language_service",
 				"taplo",
