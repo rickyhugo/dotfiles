@@ -13,16 +13,12 @@ return {
 	keys = {
 		{
 			"<C-p>",
-			function()
-				require("telescope.builtin").find_files()
-			end,
+			require("telescope.builtin").find_files,
 			desc = "Open file explorer",
 		},
 		{
 			"<C-b>",
-			function()
-				require("telescope.builtin").buffers()
-			end,
+			require("telescope.builtin").buffers,
 			desc = "Open buffer explorer",
 		},
 		{
@@ -32,15 +28,23 @@ return {
 			end,
 			desc = "Project-wide search",
 		},
+		{
+			"<leader>fh",
+			require("telescope.builtin").help_tags,
+			desc = "List help tags",
+		},
 	},
 	opts = {
 		pickers = {
 			find_files = {
 				hidden = true, -- show hidden files
-				theme = "dropdown", -- builtin theme
+				theme = "ivy",
 			},
 			buffers = {
-				theme = "dropdown", -- builtin theme
+				theme = "ivy",
+			},
+			grep_string = {
+				theme = "dropdown",
 			},
 		},
 		defaults = {
@@ -50,6 +54,9 @@ return {
 					["<esc>"] = "close", -- close explorer with <esc>
 				},
 			},
+		},
+		extensions = {
+			fzf = {},
 		},
 	},
 }
