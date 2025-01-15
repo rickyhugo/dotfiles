@@ -1,1 +1,1 @@
-require("huen")
+require("config.lazy")

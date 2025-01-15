@@ -67,7 +67,7 @@ vim.opt.splitright = true -- Vertical split to the right
 vim.opt.fillchars = { eob = " " } -- Remove '~'
 
 -- Diagnostic symbols
-for type, icon in pairs(require("huen.core.icons").diagnostics) do
+for type, icon in pairs(require("core.icons").diagnostics) do
 	local hl = "DiagnosticSign" .. type
 	vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = hl })
 end

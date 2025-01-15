@@ -13,7 +13,7 @@ return {
 		end
 	end,
 	opts = function()
-		local icons = require("huen.core.icons")
+		local icons = require("core.icons")
 		local opts = {
 			options = {
 				theme = "auto",

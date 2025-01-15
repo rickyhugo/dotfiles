@@ -13,34 +13,40 @@ return {
 	keys = {
 		{
 			"<C-p>",
-			function()
-				require("telescope.builtin").find_files()
-			end,
+			require("telescope.builtin").find_files,
 			desc = "Open file explorer",
 		},
 		{
 			"<C-b>",
-			function()
-				require("telescope.builtin").buffers()
-			end,
+			require("telescope.builtin").buffers,
 			desc = "Open buffer explorer",
 		},
 		{
-			"<leader>ps",
+			"<leader>fh",
+			require("telescope.builtin").help_tags,
+			desc = "Open help tags explorer",
+		},
+		{
+			"<leader>en",
 			function()
-				require("telescope.builtin").grep_string({ search = vim.fn.input("rg > ") })
+				require("telescope.builtin").find_files({
+					cwd = vim.fn.stdpath("config"),
+				})
 			end,
-			desc = "Project-wide search",
+			desc = "Open neovim config",
 		},
 	},
 	opts = {
 		pickers = {
 			find_files = {
 				hidden = true, -- show hidden files
-				theme = "dropdown", -- builtin theme
+				theme = "ivy",
 			},
 			buffers = {
-				theme = "dropdown", -- builtin theme
+				theme = "ivy",
+			},
+			grep_string = {
+				theme = "dropdown",
 			},
 		},
 		defaults = {
@@ -51,5 +57,12 @@ return {
 				},
 			},
 		},
+		extensions = {
+			fzf = {},
+		},
 	},
+	config = function(_, opts)
+		require("telescope").setup(opts)
+		require("core.telescope-multigrep").setup()
+	end,
 }
