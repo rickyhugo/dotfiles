@@ -14,6 +14,7 @@ return {
 				["<C-k>"] = false,
 				["<C-l>"] = false,
 				["<M-h>"] = "actions.select_split",
+				["<esc>"] = { "actions.close", mode = "n" },
 			},
 		})
 
