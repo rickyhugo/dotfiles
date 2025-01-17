@@ -24,6 +24,7 @@ return {
 				toml = { "taplo" },
 				rust = { "rustfmt" },
 				go = { "goimports", "gofumpt" },
+				tf = { "terraform_fmt" },
 			},
 			format_on_save = {
 				lsp_fallback = true,
