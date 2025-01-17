@@ -277,6 +277,11 @@ return {
 			})
 		end
 
+		-- terraform
+		local function terraformls()
+			require("lspconfig").terraformls.setup({})
+		end
+
 		require("mason-lspconfig").setup({
 			ensure_installed = {
 				"eslint",
@@ -294,6 +299,7 @@ return {
 				"ruff",
 				"rust_analyzer",
 				"gopls",
+				"terraformls",
 			},
 			automatic_installation = true,
 			handlers = {
@@ -304,6 +310,7 @@ return {
 				ruff = ruff,
 				gopls = gopls,
 				vtsls = vtsls,
+				terraformls = terraformls,
 			},
 		})
 	end,
