@@ -49,7 +49,7 @@ local live_multigrep = function(opts)
 end
 
 M.setup = function()
-	vim.keymap.set("n", "<leader>ps", live_multigrep)
+	vim.keymap.set("n", "<leader>ps", live_multigrep, { desc = "Project-wide multigrep" })
 end
 
 return M
