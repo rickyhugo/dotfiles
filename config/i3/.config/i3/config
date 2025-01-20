@@ -245,6 +245,7 @@ bindsym $mod+m move workspace to output left
 set $monitor_id DP-1-1
 set $laptop_id eDP-1
 set $laptop_res 2560x1440
+# set $laptop_res 1920x1080
 
 # default screen setup
 exec_always --no-startup-id xrandr --output $laptop_id --auto --primary --mode $laptop_res
