@@ -175,5 +175,6 @@
   "autoDocstring.includeExtendedSummary": true,
   "python.defaultInterpreterPath": "/home/huen/lendo/dev/lendo-data-ml/ml-core/.venv",
   "redhat.telemetry.enabled": false,
-  "notebook.lineNumbers": "on"
+  "notebook.lineNumbers": "on",
+  "chat.editing.alwaysSaveWithGeneratedChanges": true
 }
