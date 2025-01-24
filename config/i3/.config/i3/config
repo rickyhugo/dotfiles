@@ -246,7 +246,8 @@ set $monitor_id DP-1-1
 set $laptop_id eDP-1
 
 # set $laptop_res 3840x2160
-set $laptop_res 2560x1440
+# set $laptop_res 2560x1440
+set $laptop_res 2048x1152
 # set $laptop_res 1920x1080
 
 # default screen setup
