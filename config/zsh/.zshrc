@@ -71,6 +71,7 @@ setopt hist_ignore_dups
 setopt hist_find_no_dups
 
 # ⚙️
+export EDITOR='nvim'
 export FZF_DEFAULT_COMMAND="rg -uu --files -H"
 export FZF_PREVIEW_ADVANCED=true 
 export FZF_COMPLETION_TRIGGER=';'
