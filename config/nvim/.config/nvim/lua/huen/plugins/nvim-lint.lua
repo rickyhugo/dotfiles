@@ -22,6 +22,7 @@ return {
 			terrafrom = { "tflint" },
 			go = { "golangcilint" },
 			make = { "checkmake" },
+			rust = { "clippy" },
 		},
 		-- LazyVim extension to easily override linter options
 		-- or add custom linters.

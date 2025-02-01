@@ -42,6 +42,7 @@ return {
 					"requirements",
 					"dockerfile",
 					"rust",
+					"ron",
 					"hcl",
 					"terraform",
 					"helm",

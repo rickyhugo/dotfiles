@@ -27,6 +27,19 @@ return {
 		local lsp_capabilities = require("cmp_nvim_lsp").default_capabilities()
 		local keymap = vim.keymap.set
 
+		-- rust
+		lspconfig.bacon_ls.setup({
+			capabilities = lsp_capabilities,
+			autostart = true,
+			settings = {
+				init_options = {
+					updateOnSave = true,
+					updateOnSaveWaitMillis = 1000,
+					updateOnChange = false,
+				},
+			},
+		})
+
 		vim.api.nvim_create_autocmd("LspAttach", {
 			desc = "LSP actions",
 			callback = function(event)
@@ -87,7 +100,7 @@ return {
 			virtual_text = true,
 			underline = { severity_limit = vim.diagnostic.severity.ERROR },
 			signs = true,
-			update_in_insert = false,
+			update_in_insert = true,
 			severity_sort = true,
 		})
 
@@ -125,6 +138,8 @@ return {
 				"golines",
 				"impl",
 				"checkmake",
+				"bacon",
+				"bacon-ls",
 			},
 		})
 
@@ -298,6 +313,46 @@ return {
 			})
 		end
 
+		-- rust
+		local function rust_analyzer()
+			require("lspconfig").rust_analyzer.setup({
+				settings = {
+					cargo = {
+						allFeatures = true,
+						loadOutDirsFromCheck = true,
+						buildScripts = {
+							enable = true,
+						},
+					},
+					checkOnSave = false,
+					diagnostics = {
+						enable = false,
+					},
+					procMacro = {
+						enable = true,
+						ignored = {
+							["async-trait"] = { "async_trait" },
+							["napi-derive"] = { "napi" },
+							["async-recursion"] = { "async_recursion" },
+						},
+					},
+					files = {
+						excludeDirs = {
+							".direnv",
+							".git",
+							".github",
+							".gitlab",
+							"bin",
+							"node_modules",
+							"target",
+							"venv",
+							".venv",
+						},
+					},
+				},
+			})
+		end
+
 		require("mason-lspconfig").setup({
 			ensure_installed = {
 				"eslint",
@@ -323,6 +378,7 @@ return {
 				ruff = ruff,
 				gopls = gopls,
 				vtsls = vtsls,
+				rust_analyzer = rust_analyzer,
 			},
 		})
 	end,
