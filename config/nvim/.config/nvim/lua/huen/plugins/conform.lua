@@ -20,7 +20,7 @@ return {
 				lua = { "stylua" },
 				python = { "ruff_fix", "ruff_format", "ruff_organize_imports" },
 				sh = { "shfmt", "shellharden" },
-				sql = { "sqlfluff" },
+				sql = { "sqruff" },
 				toml = { "taplo" },
 				rust = { "rustfmt" },
 				go = { "goimports", "gofumpt", "golines" },

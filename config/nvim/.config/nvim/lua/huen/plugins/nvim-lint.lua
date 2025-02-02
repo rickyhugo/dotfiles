@@ -10,7 +10,7 @@ return {
 			-- Use the "_" filetype to run linters on filetypes that don't have other linters configured.
 			-- ['_'] = { 'fallback linter' },
 			["*"] = { "codespell" },
-			sql = { "sqlfluff" },
+			sql = { "sqruff" },
 			zsh = { "zsh" },
 			-- sh = { "shellcheck" }, -- NOTE: included in the bash-language-server
 			docker = { "hadolint" },
