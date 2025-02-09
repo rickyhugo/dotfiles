@@ -2,19 +2,17 @@ return {
 	"danymat/neogen",
 	dependencies = "nvim-treesitter/nvim-treesitter",
 	version = "*",
-	config = function()
-		require("neogen").setup({
-			enabled = true,
-			languages = {
-				python = {
-					template = {
-						annotation_convention = "numpydoc",
-					},
+	opts = {
+		enabled = true,
+		languages = {
+			python = {
+				template = {
+					annotation_convention = "numpydoc",
 				},
 			},
-			snippet_engine = "luasnip",
-		})
-	end,
+		},
+		snippet_engine = "luasnip",
+	},
 	keys = {
 		{
 			"<leader>nf",

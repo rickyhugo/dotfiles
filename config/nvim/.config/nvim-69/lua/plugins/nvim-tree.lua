@@ -6,6 +6,13 @@ return {
 		"antosha417/nvim-lsp-file-operations",
 		"echasnovski/mini.base16",
 	},
+	opts = {
+		view = { side = "right", width = 35, signcolumn = "auto" },
+		filters = { custom = { "^\\.git$" } },
+		renderer = {
+			icons = { padding = " " },
+		},
+	},
 	keys = {
 		{
 			"<leader>tt",
@@ -13,13 +20,4 @@ return {
 			desc = "[T]oggle file [t]ree",
 		},
 	},
-	config = function()
-		require("nvim-tree").setup({
-			view = { side = "right", width = 35, signcolumn = "auto" },
-			filters = { custom = { "^\\.git$" } },
-			renderer = {
-				icons = { padding = " " },
-			},
-		})
-	end,
 }

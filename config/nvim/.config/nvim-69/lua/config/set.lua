@@ -64,8 +64,6 @@ vim.opt.splitright = true -- Vertical split to the right
 
 vim.opt.fillchars = { eob = " " } -- Remove '~'
 
--- vim.o.shortmess = vim.o.shortmess .. "I" -- Disable intro message
-
 -- Diagnostic symbols
 for type, icon in pairs(require("config.icons").diagnostics) do
 	local hl = "DiagnosticSign" .. type

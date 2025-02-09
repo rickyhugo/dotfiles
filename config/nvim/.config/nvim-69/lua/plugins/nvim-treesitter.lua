@@ -33,6 +33,7 @@ return {
 				"tsx",
 				"dockerfile",
 				"rust",
+				"ron",
 				"hcl",
 				"terraform",
 				"helm",
