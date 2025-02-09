@@ -13,10 +13,19 @@ return {
 			},
 		},
 		{ "j-hui/fidget.nvim", opts = {} },
-		"yioneko/nvim-vtsls", -- tyescript lsp
+		"yioneko/nvim-vtsls", -- js/ts lsp
 	},
 	opts = {
 		servers = {
+			-- misc
+			bashls = {},
+			taplo = {},
+			jsonls = {},
+			yamlls = {},
+			dockerls = {},
+			docker_compose_language_service = {},
+			marksman = {},
+
 			-- lua
 			lua_ls = {
 				settings = {
@@ -148,7 +157,10 @@ return {
 				},
 			},
 
-			-- typescript
+			-- web
+			biome = {},
+			eslint = {},
+			tailwindcss = {},
 			vtsls = {
 				settings = {
 					complete_function_calls = true,
@@ -195,12 +207,10 @@ return {
 			"Pipfile",
 		})
 
-		local mason_server_names = { bacon_ls = "bacon-ls" }
+		local mason_server_name_overrides = { bacon_ls = "bacon-ls" }
 		local ensure_installed_servers = {}
 
 		for server, config in pairs(opts.servers) do
-			-- passing config.capabilities to blink.cmp merges with the capabilities in your
-			-- `opts[server].capabilities, if you've defined it
 			config.capabilities = require("blink.cmp").get_lsp_capabilities(config.capabilities)
 			lspconfig[server].setup(config)
 
@@ -209,15 +219,16 @@ return {
 				config.root_dir = python_server_root
 			end
 
-			-- override server name if it's in the mason_server_names table
-			if mason_server_names[server] then
-				server = mason_server_names[server]
+			-- override server name if it's in the mason_server_name_overrides table
+			if mason_server_name_overrides[server] then
+				server = mason_server_name_overrides[server]
 			end
 
 			-- accumulate the servers to ensure installation
 			table.insert(ensure_installed_servers, server)
 		end
 
+		-- automatically install servers with mason
 		local ensure_installed = require("config.tools").ensure_installed
 		vim.list_extend(ensure_installed, ensure_installed_servers)
 		require("mason-tool-installer").setup({ ensure_installed = ensure_installed })
@@ -226,11 +237,7 @@ return {
 			desc = "LSP actions",
 			callback = function(args)
 				local client = assert(vim.lsp.get_client_by_id(args.data.client_id), "must have valid client")
-
 				local settings = opts.servers[client.name]
-				if type(settings) ~= "table" then
-					settings = {}
-				end
 
 				local builtin = require("telescope.builtin")
 
@@ -291,6 +298,26 @@ return {
 					end
 				end
 
+				-- js/ts specific settings
+				if client.name == "vtsls" then
+					local ts_augroup = vim.api.nvim_create_augroup("TypescriptAutocmds", { clear = true })
+					vim.api.nvim_create_autocmd("BufWritePre", {
+						group = ts_augroup,
+						pattern = { "*.js", "*.jsx", "*.ts", "*.tsx" },
+						callback = function()
+							return require("vtsls").commands.fix_all(vim.api.nvim_get_current_buf())
+						end,
+						desc = "Autofix problems [JS/TS]",
+					})
+
+					vim.api.nvim_create_autocmd("BufWritePost", {
+						group = ts_augroup,
+						pattern = { "package.json" },
+						command = "LspRestart eslint",
+						desc = "Restart eslint upon changes in 'package.json' [JS/TS]",
+					})
+				end
+
 				-- HACK: workaround for gopls not supporting semanticTokensProvider
 				-- https://github.com/golang/go/issues/54531#issuecomment-1464982242
 				if
@@ -320,38 +347,9 @@ return {
 			update_in_insert = true,
 			severity_sort = true,
 			float = {
-				focusable = false,
 				style = "minimal",
 				border = "rounded",
 			},
-		})
-
-		-- js/ts specific settings
-		local ts_augroup = vim.api.nvim_create_augroup("TypescriptAutocmds", { clear = true })
-
-		vim.api.nvim_create_autocmd("BufWritePre", {
-			group = ts_augroup,
-			pattern = { "*.js", "*.jsx", "*.ts", "*.tsx" },
-			callback = function()
-				return require("vtsls").commands.organize_imports(vim.api.nvim_get_current_buf())
-			end,
-			desc = "Organize imports [JS/TS]",
-		})
-
-		vim.api.nvim_create_autocmd("BufWritePre", {
-			group = ts_augroup,
-			pattern = { "*.js", "*.jsx", "*.ts", "*.tsx" },
-			callback = function()
-				return require("vtsls").commands.fix_all(vim.api.nvim_get_current_buf())
-			end,
-			desc = "Autofix problems [JS/TS]",
-		})
-
-		vim.api.nvim_create_autocmd("BufWritePost", {
-			group = ts_augroup,
-			pattern = { "package.json" },
-			command = "LspRestart eslint",
-			desc = "Restart eslint upon changes in 'package.json' [JS/TS]",
 		})
 	end,
 }
