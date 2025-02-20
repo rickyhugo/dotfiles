@@ -15,7 +15,6 @@ zinit wait lucid for \
   OMZP::tmux \
   OMZP::git \
   OMZP::ubuntu \
-  OMZP::colored-man-pages \
   OMZL::directories.zsh # NOTE: `cd` aliases
 
 # NOTE: https://github.com/zdharma-continuum/fast-syntax-highlighting?tab=readme-ov-file#zinit
