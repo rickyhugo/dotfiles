@@ -16,6 +16,10 @@
     "editor.formatOnSave": true,
     "editor.formatOnType": false
   },
+  "[markdown]": {
+    "editor.wordWrapColumn": 80,
+    "prettier.proseWrap": "always"
+  },
   "catppuccin.accentColor": "flamingo",
   "catppuccin.bracketMode": "neovim",
   "catppuccin.italicKeywords": false,
@@ -52,7 +56,6 @@
   "python.languageServer": "Pylance",
   "python.testing.pytestEnabled": true,
   "ruff.organizeImports": true,
-  "ruff.showNotifications": "onError",
   "ruff.fixAll": true,
   "terminal.integrated.fontFamily": "JetBrains Mono",
   "terminal.integrated.fontSize": 14,
