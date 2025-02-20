@@ -265,9 +265,7 @@ bindsym Control+$alt+p exec --no-startup-id flameshot gui
 
 # startup layout
 assign [class="^Spotify$"] 5
-
-# assign [class="^Slack$"] 3
-# exec --no-startup-id i3-msg 'exec --no-startup-id slack'
+assign [class="^Slack$"] 3
 
 # open mail/calendar/spotify/slack
 bindsym Control+$alt+w exec --no-startup-id google-chrome-stable --new-window 'https://mail.google.com/mail'
