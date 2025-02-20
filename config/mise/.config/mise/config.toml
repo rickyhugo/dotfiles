@@ -5,6 +5,7 @@ go = "latest"
 ruby = "latest"
 java = "21"
 zig = "0.13"
+uv = "latest"
 
 [env]
 GH_CONFIG_DIR = "/home/huen/.config/gh/personal"
