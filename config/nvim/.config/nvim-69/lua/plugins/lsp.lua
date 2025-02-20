@@ -229,7 +229,7 @@ return {
 		end
 
 		-- automatically install servers with mason
-		local ensure_installed = require("config.tools").ensure_installed
+		local ensure_installed = require("config.utils").tools.mason_ensure_installed
 		vim.list_extend(ensure_installed, ensure_installed_servers)
 		require("mason-tool-installer").setup({ ensure_installed = ensure_installed })
 
@@ -299,8 +299,9 @@ return {
 				end
 
 				-- js/ts specific settings
-				if client.name == "vtsls" then
+				if client ~= nil and client.name == "vtsls" then
 					local ts_augroup = vim.api.nvim_create_augroup("TypescriptAutocmds", { clear = true })
+
 					vim.api.nvim_create_autocmd("BufWritePre", {
 						group = ts_augroup,
 						pattern = { "*.js", "*.jsx", "*.ts", "*.tsx" },
