@@ -54,6 +54,8 @@ end, { desc = "Toggle inlay hints" })
 keymap("v", "<leader>64d", "c<c-r>=system('base64 --decode', @\")<cr><esc>", { desc = "Decode base64" })
 keymap("v", "<leader>64e", "c<c-r>=system('base64 --wrap=0', @\")<cr><esc>", { desc = "Encode base64" })
 
+keymap("n", "<leader>cl", "<cmd>Lazy<cr>", { desc = "Open lazy.nvim" })
+
 -- TODO: quickfix navigation
 -- keymap("n", "<C-k>", "<cmd>cnext<CR>zz")
 -- keymap("n", "<C-j>", "<cmd>cprev<CR>zz")

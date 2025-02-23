@@ -19,7 +19,4 @@ require("lazy").setup({
 		{ import = "huen.plugins" },
 	},
 	checker = { enabled = false },
-	ui = {
-		backdrop = 100,
-	},
 })
