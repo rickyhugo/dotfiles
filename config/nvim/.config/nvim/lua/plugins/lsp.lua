@@ -1,7 +1,7 @@
 return {
 	"neovim/nvim-lspconfig",
 	dependencies = {
-		{ "williamboman/mason.nvim" }, -- Required
+		{ "williamboman/mason.nvim", keys = { { "<leader>cm", "<cmd>Mason<cr>", desc = "Open Mason" } } }, -- Required
 		{ "williamboman/mason-lspconfig.nvim" }, -- Required
 		{ "WhoIsSethDaniel/mason-tool-installer.nvim" }, -- Required
 		{ "onsails/lspkind.nvim" }, -- Required
