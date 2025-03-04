@@ -6,6 +6,10 @@ return {
 			ensure_installed = {
 				"bash",
 				"gitignore",
+				"git_config",
+				"gitcommit",
+				"git_rebase",
+				"gitattributes",
 				"diff",
 				"printf",
 				"lua",
