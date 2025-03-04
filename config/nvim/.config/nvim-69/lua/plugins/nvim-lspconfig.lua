@@ -263,7 +263,7 @@ return {
 				)
 				vim.keymap.set("n", "K", vim.lsp.buf.hover, { buffer = 0, desc = "Hover symbol [LSP]" })
 
-				vim.keymap.set("n", "<leader>cr", vim.lsp.buf.rename, { buffer = 0, desc = "Rename symbol [LSP]" })
+				vim.keymap.set("n", "<leader>rs", vim.lsp.buf.rename, { buffer = 0, desc = "Rename symbol [LSP]" })
 				vim.keymap.set(
 					"n",
 					"<leader>ca",
@@ -272,7 +272,7 @@ return {
 				)
 				vim.keymap.set(
 					"n",
-					"<leader>ps",
+					"<leader>fs",
 					builtin.lsp_document_symbols,
 					{ buffer = 0, desc = "Show document symbols [LSP]" }
 				)
