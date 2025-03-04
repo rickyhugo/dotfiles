@@ -214,12 +214,12 @@ return {
 			config.capabilities = require("blink.cmp").get_lsp_capabilities(config.capabilities)
 			lspconfig[server].setup(config)
 
-			-- set root_dir for python servers
+			-- set `root_dir` for python servers
 			if vim.tbl_contains(python_servers, server) then
 				config.root_dir = python_server_root
 			end
 
-			-- override server name if it's in the mason_server_name_overrides table
+			-- override server name if it's in the `mason_server_name_overrides` table
 			if mason_server_name_overrides[server] then
 				server = mason_server_name_overrides[server]
 			end
@@ -301,6 +301,15 @@ return {
 				-- js/ts specific settings
 				if client ~= nil and client.name == "vtsls" then
 					local ts_augroup = vim.api.nvim_create_augroup("TypescriptAutocmds", { clear = true })
+
+					vim.api.nvim_create_autocmd("BufWritePre", {
+						group = ts_augroup,
+						pattern = { "*.js", "*.jsx", "*.ts", "*.tsx" },
+						callback = function()
+							return require("vtsls").commands.organize_imports(vim.api.nvim_get_current_buf())
+						end,
+						desc = "Organize imports [JS/TS]",
+					})
 
 					vim.api.nvim_create_autocmd("BufWritePre", {
 						group = ts_augroup,

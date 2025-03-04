@@ -89,6 +89,15 @@ return {
 						group = ts_augroup,
 						pattern = { "*.js", "*.jsx", "*.ts", "*.tsx" },
 						callback = function()
+							return require("vtsls").commands.organize_imports(vim.api.nvim_get_current_buf())
+						end,
+						desc = "Organize imports [JS/TS]",
+					})
+
+					vim.api.nvim_create_autocmd("BufWritePre", {
+						group = ts_augroup,
+						pattern = { "*.js", "*.jsx", "*.ts", "*.tsx" },
+						callback = function()
 							return require("vtsls").commands.fix_all(vim.api.nvim_get_current_buf())
 						end,
 						desc = "Autofix problems [JS/TS]",
