@@ -1,30 +1,54 @@
 return {
 	tools = {
 		mason_ensure_installed = {
-			"actionlint",
+			-- web
 			"prettierd",
 			"eslint_d",
-			"biome",
+
+			-- shell
 			"shfmt",
 			"shellharden", -- NOTE: requires rust
 			"shellcheck",
+
+			-- docker
 			"hadolint",
+
+			-- markdown
 			"markdownlint",
+
+			-- json
 			"jsonlint",
+
+			-- yaml
 			"yamllint",
+
+			-- lua
 			"stylua",
 			"luacheck",
-			"cspell",
-			"codespell",
-			"tflint",
+
+			-- go
 			"gofumpt",
 			"goimports",
 			"gomodifytags",
 			"golangci-lint",
 			"golines",
 			"impl",
-			"checkmake",
+
+			-- rust
 			"bacon",
+
+			-- spelling
+			"cspell",
+			"codespell",
+
+			-- terraform
+			"tflint",
+
+			-- github actions
+			"actionlint",
+
+			-- makefile
+			"checkmake",
 		},
 	},
 	icons = {

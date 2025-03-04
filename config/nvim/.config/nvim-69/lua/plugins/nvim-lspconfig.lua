@@ -18,13 +18,17 @@ return {
 	opts = {
 		servers = {
 			-- misc
-			bashls = {},
 			taplo = {},
 			jsonls = {},
 			yamlls = {},
+			marksman = {},
+
+			-- shell
+			bashls = {},
+
+			-- docker
 			dockerls = {},
 			docker_compose_language_service = {},
-			marksman = {},
 
 			-- lua
 			lua_ls = {
