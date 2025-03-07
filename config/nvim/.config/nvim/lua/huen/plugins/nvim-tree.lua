@@ -15,10 +15,21 @@ return {
 	},
 	config = function()
 		require("nvim-tree").setup({
-			view = { side = "right", width = 35, signcolumn = "auto" },
+			view = {
+				side = "right",
+				signcolumn = "yes",
+				width = 36,
+			},
+			sync_root_with_cwd = true,
 			filters = { custom = { "^\\.git$" } },
 			renderer = {
-				icons = { padding = " " },
+				indent_markers = { enable = true },
+				icons = {
+					padding = "  ",
+					web_devicons = {
+						folder = { enable = true },
+					},
+				},
 			},
 		})
 	end,

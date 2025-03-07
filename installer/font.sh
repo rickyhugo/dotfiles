@@ -9,7 +9,7 @@ curl -sL https://github.com/ryanoasis/nerd-fonts/releases/latest/download/NerdFo
 curl -sL https://github.com/ryanoasis/nerd-fonts/releases/latest/download/IosevkaTerm.tar.xz | sudo tar xf - -J -C /usr/share/fonts/
 
 # font: Iosevka (non-patched)
-wget -O Iosevka.zip https://github.com/be5invis/Iosevka/releases/download/v31.3.0/PkgTTC-Iosevka-31.3.0.zip
+wget -O Iosevka.zip https://github.com/be5invis/Iosevka/releases/download/v33.0.1/PkgTTC-Iosevka-33.0.1.zip
 sudo unzip Iosevka.zip -d /usr/share/fonts
 rm Iosevka.zip
 

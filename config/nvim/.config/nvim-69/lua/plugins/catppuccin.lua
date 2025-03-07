@@ -17,6 +17,15 @@ return {
 				which_key = true,
 				lsp_saga = true,
 				mason = true,
+				nvimtree = false,
+				harpoon = true,
+				blink_cmp = true,
+				indent_blankline = {
+					enabled = true,
+					colored_indent_levels = false,
+				},
+				lsp_trouble = true,
+				dadbod_ui = true,
 			},
 		})
 		vim.cmd([[colorscheme catppuccin]])
