@@ -9,14 +9,15 @@ return {
 		explorer = { enabled = false },
 		indent = { enabled = false },
 		input = { enabled = false },
-		picker = { enabled = true },
-		notifier = { enabled = true },
-		quickfile = { enabled = true },
 		scope = { enabled = false },
 		scroll = { enabled = false },
 		statuscolumn = { enabled = false },
 		words = { enabled = false },
 		dim = { enabled = false },
+
+		picker = { enabled = true },
+		notifier = { enabled = true },
+		quickfile = { enabled = true },
 		zen = { enabled = true },
 
 		styles = {
