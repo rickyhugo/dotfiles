@@ -26,9 +26,7 @@ return {
 				indent_markers = { enable = true },
 				icons = {
 					padding = "  ",
-					web_devicons = {
-						folder = { enable = true },
-					},
+					git_placement = "after",
 				},
 			},
 		})
