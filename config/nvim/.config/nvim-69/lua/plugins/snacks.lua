@@ -14,26 +14,14 @@ return {
 		statuscolumn = { enabled = false },
 		words = { enabled = false },
 		dim = { enabled = false },
+		animate = { enabled = false },
+		zen = { enabled = false },
 
 		picker = { enabled = true },
 		notifier = { enabled = true },
 		quickfile = { enabled = true },
-		zen = { enabled = true },
-
-		styles = {
-			zen = {
-				backdrop = { transparent = true, blend = 15 },
-			},
-		},
 	},
 	keys = {
-		{
-			"<leader>z",
-			function()
-				Snacks.zen()
-			end,
-			desc = "Toggle Zen Mode",
-		},
 		{
 			"<leader>N",
 			desc = "Neovim News",
