@@ -21,6 +21,9 @@ return {
 
 		-- typescript
 		{ "yioneko/nvim-vtsls" },
+
+		-- misc
+		{ "j-hui/fidget.nvim", opts = {} },
 	},
 	config = function()
 		local lspconfig = require("lspconfig")
