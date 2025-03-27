@@ -45,6 +45,7 @@ return {
 				"go",
 				"gomod",
 				"zig",
+				"svelte",
 			},
 			sync_install = false,
 			auto_install = true,

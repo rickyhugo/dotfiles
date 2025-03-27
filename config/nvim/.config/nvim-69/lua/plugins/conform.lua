@@ -11,7 +11,6 @@ return {
 			css = { "prettierd" },
 			html = { "prettierd" },
 			graphql = { "prettierd" },
-			svelte = { "prettierd" },
 			json = { "prettierd" },
 			json5 = { "prettierd" },
 			yaml = { "prettierd" },
