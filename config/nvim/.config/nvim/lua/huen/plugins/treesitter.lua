@@ -50,6 +50,7 @@ return {
 					"go",
 					"zig",
 					"svelte",
+					"css",
 				},
 				sync_install = false,
 				auto_install = true,
