@@ -10,7 +10,6 @@ return {
 			typescriptreact = { "prettierd" },
 			css = { "prettierd" },
 			html = { "prettierd" },
-			svelte = { "prettierd" },
 			graphql = { "prettierd" },
 			json = { "prettierd" },
 			json5 = { "prettierd" },

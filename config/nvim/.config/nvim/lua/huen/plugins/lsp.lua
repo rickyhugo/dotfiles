@@ -380,6 +380,7 @@ return {
 				"ruff",
 				"rust_analyzer",
 				"gopls",
+				"svelte",
 			},
 			automatic_installation = true,
 			handlers = {
