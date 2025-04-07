@@ -47,6 +47,7 @@ return {
 				"zig",
 				"svelte",
 				"css",
+				"astro",
 			},
 			sync_install = false,
 			auto_install = true,

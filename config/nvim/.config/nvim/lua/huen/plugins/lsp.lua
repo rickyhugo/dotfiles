@@ -381,6 +381,7 @@ return {
 				"rust_analyzer",
 				"gopls",
 				"svelte",
+				"astro",
 			},
 			automatic_installation = true,
 			handlers = {

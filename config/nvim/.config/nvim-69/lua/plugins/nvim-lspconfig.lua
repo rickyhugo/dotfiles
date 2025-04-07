@@ -165,6 +165,8 @@ return {
 			biome = {},
 			eslint = {},
 			tailwindcss = {},
+			svelte = {},
+			astro = {},
 			vtsls = {
 				settings = {
 					complete_function_calls = true,
