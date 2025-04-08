@@ -24,6 +24,7 @@
   "catppuccin.accentColor": "flamingo",
   "catppuccin.bracketMode": "neovim",
   "catppuccin.italicKeywords": false,
+  "editor.fontSize": 14,
   "editor.fontFamily": "JetBrains Mono",
   "editor.fontLigatures": true,
   "editor.formatOnSave": true,
@@ -45,7 +46,7 @@
   "notebook.defaultFormatter": "charliermarsh.ruff",
   "notebook.cellToolbarLocation": {
     "default": "right",
-    "jupyter-notebook": "left"
+    "jupyter-notebook": "right"
   },
   "notebook.codeActionsOnSave": {
     "notebook.source.fixAll": "explicit",

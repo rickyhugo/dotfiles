@@ -303,6 +303,7 @@ return {
 				"rust_analyzer",
 				"gopls",
 				"terraformls",
+				"jinja_lsp",
 			},
 			automatic_installation = true,
 			handlers = {

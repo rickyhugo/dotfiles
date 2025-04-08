@@ -76,3 +76,12 @@ end
 -- Remove clutter from cmdline
 vim.opt.showmode = false
 vim.opt.showcmd = false
+
+-- jinja
+vim.filetype.add({
+	extension = {
+		jinja = "jinja",
+		jinja2 = "jinja",
+		j2 = "jinja",
+	},
+})
