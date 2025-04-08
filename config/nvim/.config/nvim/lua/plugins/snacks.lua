@@ -19,7 +19,14 @@ return {
 		picker = { enabled = false },
 		quickfile = { enabled = false },
 
-		notifier = { enabled = true },
+		notifier = {
+			enabled = true,
+			style = "compact",
+			-- INFO: remove redundant notifications created when multiple LSPs runs
+			filter = function(notif)
+				return not (notif.level == "info" and notif.msg == "No information available")
+			end,
+		},
 	},
 	keys = {
 		{

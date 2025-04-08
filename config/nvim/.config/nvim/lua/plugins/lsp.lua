@@ -28,50 +28,73 @@ return {
 	config = function()
 		local lspconfig = require("lspconfig")
 		local lsp_capabilities = require("cmp_nvim_lsp").default_capabilities()
-		local keymap = vim.keymap.set
 
 		vim.api.nvim_create_autocmd("LspAttach", {
 			desc = "LSP actions",
-			callback = function(event)
-				local opts = { buffer = event.buf }
-				local client = vim.lsp.get_client_by_id(event.data.client_id)
+			callback = function(_)
+				local builtin = require("telescope.builtin")
 
-				keymap("n", "gd", vim.lsp.buf.definition, opts)
-				keymap("n", "gt", vim.lsp.buf.type_definition, opts)
-				keymap("n", "gD", vim.lsp.buf.declaration, opts)
-				keymap("n", "gi", vim.lsp.buf.implementation, opts)
-				keymap("n", "gw", vim.lsp.buf.document_symbol, opts)
-				keymap("n", "gW", vim.lsp.buf.workspace_symbol, opts)
-				keymap("n", "[d", function()
-					vim.diagnostic.goto_prev({ float = { border = "rounded" } })
-				end)
-				keymap("n", "]d", function()
-					vim.diagnostic.goto_next({ float = { border = "rounded" } })
-				end)
+				vim.opt_local.omnifunc = "v:lua.vim.lsp.omnifunc"
+				vim.keymap.set("n", "gd", builtin.lsp_definitions, { buffer = 0, desc = "Go to definition [LSP]" })
+				vim.keymap.set("n", "gr", builtin.lsp_references, { buffer = 0, desc = "Show references [LSP]" })
+				vim.keymap.set("n", "gD", vim.lsp.buf.declaration, { buffer = 0, desc = "Go to declaration [LSP]" })
+				vim.keymap.set(
+					"n",
+					"gi",
+					vim.lsp.buf.implementation,
+					{ buffer = 0, desc = "Go to implementation [LSP]" }
+				)
+				vim.keymap.set(
+					"n",
+					"gt",
+					vim.lsp.buf.type_definition,
+					{ buffer = 0, desc = "Go to type definition [LSP]" }
+				)
+				vim.keymap.set("n", "K", vim.lsp.buf.hover, { buffer = 0, desc = "Hover symbol [LSP]" })
 
-				-- NOTE: LSP saga keymaps
-				-- keymap("n", "[d", "<cmd>Lspsaga diagnostic_jump_prev<CR>", opts)
-				-- keymap("n", "]d", "<cmd>Lspsaga diagnostic_jump_next<CR>", opts)
-				keymap("n", "<leader>ld", "<Cmd>Lspsaga show_line_diagnostics<CR>")
-				keymap("n", "K", "<cmd>Lspsaga hover_doc<CR>", opts)
-				keymap("n", "<leader>pd", "<cmd>Lspsaga peek_definition<CR>", opts)
-				keymap("n", "<leader>pt", "<cmd>Lspsaga peek_type_definition<CR>", opts)
-				keymap("n", "gr", "<cmd>Lspsaga finder<CR>", opts)
-				keymap("n", "<leader>rn", "<Cmd>Lspsaga rename<CR>", opts)
+				vim.keymap.set("n", "<leader>rs", vim.lsp.buf.rename, { buffer = 0, desc = "Rename symbol [LSP]" })
+				vim.keymap.set(
+					"n",
+					"<leader>ca",
+					vim.lsp.buf.code_action,
+					{ buffer = 0, desc = "Show code actions [LSP]" }
+				)
+				vim.keymap.set(
+					"n",
+					"<leader>fs",
+					builtin.lsp_document_symbols,
+					{ buffer = 0, desc = "Show document symbols [LSP]" }
+				)
 
-				if client ~= nil and client.server_capabilities.codeActionProvider then
-					keymap("n", "<leader>ca", "<cmd>Lspsaga code_action<CR>", opts)
-					keymap("v", "<leader>ca", "<cmd>Lspsaga code_action<CR>", opts)
-				end
+				vim.keymap.set(
+					"n",
+					"[d",
+					vim.diagnostic.goto_prev,
+					{ buffer = 0, desc = "Go to previous diagnostic [LSP]" }
+				)
+				vim.keymap.set(
+					"n",
+					"]d",
+					vim.diagnostic.goto_next,
+					{ buffer = 0, desc = "Go to next diagnostic [LSP]" }
+				)
 			end,
+		})
+
+		vim.lsp.handlers["textDocument/hover"] = vim.lsp.with(vim.lsp.handlers.hover, {
+			border = "rounded",
 		})
 
 		vim.diagnostic.config({
 			virtual_text = true,
 			underline = { severity_limit = vim.diagnostic.severity.ERROR },
 			signs = true,
-			update_in_insert = false,
+			update_in_insert = true,
 			severity_sort = true,
+			float = {
+				style = "minimal",
+				border = "rounded",
+			},
 		})
 
 		require("mason").setup({
@@ -297,7 +320,7 @@ return {
 				"dockerls",
 				"docker_compose_language_service",
 				"taplo",
-				"marksman",
+				-- "marksman",
 				"basedpyright",
 				"ruff",
 				"rust_analyzer",
