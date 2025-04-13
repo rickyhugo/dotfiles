@@ -65,12 +65,9 @@ vim.opt.splitright = true -- Vertical split to the right
 
 vim.opt.fillchars = { eob = " " } -- Remove '~'
 
--- Diagnostic symbols
-for type, icon in pairs(require("config.utils").icons.diagnostics) do
-	local hl = "DiagnosticSign" .. type
-	vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = hl })
-end
-
 -- Remove clutter from cmdline
 vim.opt.showmode = false
 vim.opt.showcmd = false
+
+-- TODO: set this when plugins have catched up
+-- vim.opt.winborder = "rounded"

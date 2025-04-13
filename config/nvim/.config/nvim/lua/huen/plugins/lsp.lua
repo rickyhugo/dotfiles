@@ -290,11 +290,37 @@ return {
 		end
 
 		-- typescript
+
+		--- Gets a path to a package in the Mason registry.
+		--- Prefer this to `get_package`, since the package might not always be
+		--- available yet and trigger errors.
+		---@param pkg string
+		---@param path? string
+		local function get_pkg_path(pkg, path)
+			pcall(require, "mason")
+			local root = vim.env.MASON or (vim.fn.stdpath("data") .. "/mason")
+			path = path or ""
+			local ret = root .. "/packages/" .. pkg .. "/" .. path
+			return ret
+		end
+
 		local function vtsls()
 			require("lspconfig").vtsls.setup({
 				settings = {
 					complete_function_calls = true,
 					vtsls = {
+						-- tsserver = {
+						-- 	globalPlugins = {
+						-- 		{
+						-- 			name = "@astrojs/ts-plugin",
+						-- 			location = get_pkg_path(
+						-- 				"astro-language-server",
+						-- 				"/node_modules/@astrojs/ts-plugin"
+						-- 			),
+						-- 			enableForWorkspaceTypeScriptVersions = true,
+						-- 		},
+						-- 	},
+						-- },
 						enableMoveToFileCodeAction = true,
 						autoUseWorkspaceTsdk = true,
 						experimental = {
@@ -322,6 +348,11 @@ return {
 					},
 				},
 			})
+		end
+
+		-- astro
+		local function astro()
+			require("lspconfig").astro.setup({})
 		end
 
 		-- rust
@@ -391,6 +422,7 @@ return {
 				ruff = ruff,
 				gopls = gopls,
 				vtsls = vtsls,
+				astro = astro,
 				rust_analyzer = rust_analyzer,
 			},
 		})

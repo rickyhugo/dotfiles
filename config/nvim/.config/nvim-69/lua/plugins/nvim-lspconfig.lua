@@ -248,49 +248,45 @@ return {
 				local builtin = require("telescope.builtin")
 
 				vim.opt_local.omnifunc = "v:lua.vim.lsp.omnifunc"
-				vim.keymap.set("n", "gd", builtin.lsp_definitions, { buffer = 0, desc = "Go to definition [LSP]" })
-				vim.keymap.set("n", "gr", builtin.lsp_references, { buffer = 0, desc = "Show references [LSP]" })
-				vim.keymap.set("n", "gD", vim.lsp.buf.declaration, { buffer = 0, desc = "Go to declaration [LSP]" })
+				vim.keymap.set("n", "gd", builtin.lsp_definitions, { buffer = true, desc = "Go to definition [LSP]" })
+				vim.keymap.set("n", "gr", builtin.lsp_references, { buffer = true, desc = "Show references [LSP]" })
+				vim.keymap.set("n", "gD", vim.lsp.buf.declaration, { buffer = true, desc = "Go to declaration [LSP]" })
 				vim.keymap.set(
 					"n",
 					"gi",
 					vim.lsp.buf.implementation,
-					{ buffer = 0, desc = "Go to implementation [LSP]" }
+					{ buffer = true, desc = "Go to implementation [LSP]" }
 				)
 				vim.keymap.set(
 					"n",
 					"gt",
 					vim.lsp.buf.type_definition,
-					{ buffer = 0, desc = "Go to type definition [LSP]" }
+					{ buffer = true, desc = "Go to type definition [LSP]" }
 				)
-				vim.keymap.set("n", "K", vim.lsp.buf.hover, { buffer = 0, desc = "Hover symbol [LSP]" })
+				vim.keymap.set("n", "K", function()
+					vim.lsp.buf.hover({ border = "rounded" })
+				end, { buffer = true, desc = "Hover symbol [LSP]" })
 
-				vim.keymap.set("n", "<leader>rs", vim.lsp.buf.rename, { buffer = 0, desc = "Rename symbol [LSP]" })
+				vim.keymap.set("n", "<leader>rs", vim.lsp.buf.rename, { buffer = true, desc = "Rename symbol [LSP]" })
 				vim.keymap.set(
 					"n",
 					"<leader>ca",
 					vim.lsp.buf.code_action,
-					{ buffer = 0, desc = "Show code actions [LSP]" }
+					{ buffer = true, desc = "Show code actions [LSP]" }
 				)
 				vim.keymap.set(
 					"n",
 					"<leader>fs",
 					builtin.lsp_document_symbols,
-					{ buffer = 0, desc = "Show document symbols [LSP]" }
+					{ buffer = true, desc = "Show document symbols [LSP]" }
 				)
 
-				vim.keymap.set(
-					"n",
-					"[d",
-					vim.diagnostic.goto_prev,
-					{ buffer = 0, desc = "Go to previous diagnostic [LSP]" }
-				)
-				vim.keymap.set(
-					"n",
-					"]d",
-					vim.diagnostic.goto_next,
-					{ buffer = 0, desc = "Go to next diagnostic [LSP]" }
-				)
+				vim.keymap.set("n", "[d", function()
+					vim.diagnostic.jump({ count = -1, float = true })
+				end, { buffer = true, desc = "Go to previous diagnostic [LSP]" })
+				vim.keymap.set("n", "]d", function()
+					vim.diagnostic.jump({ count = 1, float = true })
+				end, { buffer = true, desc = "Go to next diagnostic [LSP]" })
 
 				-- Override server capabilities
 				if settings.server_capabilities then
@@ -356,14 +352,19 @@ return {
 			end,
 		})
 
-		vim.lsp.handlers["textDocument/hover"] = vim.lsp.with(vim.lsp.handlers.hover, {
-			border = "rounded",
-		})
+		local icons = require("config.utils").icons
 
 		vim.diagnostic.config({
 			virtual_text = true,
 			underline = { severity_limit = vim.diagnostic.severity.ERROR },
-			signs = true,
+			signs = {
+				text = {
+					[vim.diagnostic.severity.ERROR] = icons.diagnostics.Error,
+					[vim.diagnostic.severity.WARN] = icons.diagnostics.Warn,
+					[vim.diagnostic.severity.INFO] = icons.diagnostics.Info,
+					[vim.diagnostic.severity.HINT] = icons.diagnostics.Hint,
+				},
+			},
 			update_in_insert = true,
 			severity_sort = true,
 			float = {

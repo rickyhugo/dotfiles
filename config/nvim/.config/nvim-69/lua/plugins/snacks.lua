@@ -17,8 +17,15 @@ return {
 		animate = { enabled = false },
 		zen = { enabled = false },
 
+		notifier = {
+			enabled = true,
+			style = "compact",
+			-- INFO: remove redundant information notifications created when multiple LSPs are active
+			filter = function(notif)
+				return not (notif.level == "info" and notif.msg == "No information available")
+			end,
+		},
 		picker = { enabled = true },
-		notifier = { enabled = true },
 		quickfile = { enabled = true },
 	},
 	keys = {
