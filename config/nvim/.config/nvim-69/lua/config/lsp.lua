@@ -6,6 +6,12 @@ vim.lsp.enable({
 	"basedpyright",
 	"ruff",
 
+	-- rust
+
+	-- go
+
+	-- web
+
 	-- shell,
 	"bashls",
 
