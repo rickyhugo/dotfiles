@@ -15,6 +15,7 @@ return {
 		{ "j-hui/fidget.nvim", opts = {} },
 		"yioneko/nvim-vtsls", -- js/ts lsp
 	},
+	enabled = false,
 	opts = {
 		servers = {
 			-- misc

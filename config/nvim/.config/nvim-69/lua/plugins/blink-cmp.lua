@@ -57,7 +57,7 @@ return {
 		},
 
 		keymap = {
-			preset = "enter",
+			preset = "default",
 		},
 
 		completion = {

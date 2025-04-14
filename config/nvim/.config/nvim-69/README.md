@@ -1,3 +1,4 @@
 TODO
 
-- [ ] configure explorer in snacks.nvim
+- [ ] migrate to `vim.lsp.config`
+- [ ] enable automatic installation of LSPs
