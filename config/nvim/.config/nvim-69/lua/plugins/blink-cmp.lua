@@ -56,13 +56,14 @@ return {
 			},
 		},
 
-		-- TODO: fix keymaps
 		keymap = {
-			preset = "default",
+			preset = "enter",
 		},
 
 		completion = {
 			ghost_text = { enabled = true },
+
+			list = { selection = { preselect = false } },
 
 			menu = {
 				auto_show = true,
@@ -81,19 +82,22 @@ return {
 			},
 		},
 
+		signature = { enabled = true, window = { show_documentation = false } },
+
 		cmdline = {
 			enabled = true,
+
 			keymap = {
 				preset = "cmdline",
 			},
+
 			completion = {
 				menu = {
 					auto_show = function(_)
-						return vim.fn.getcmdtype() == ":"
-						-- enable for inputs as well, with:
-						-- or vim.fn.getcmdtype() == '@'
+						return vim.fn.getcmdtype() == ":" or vim.fn.getcmdtype() == "@"
 					end,
 				},
+
 				ghost_text = { enabled = true },
 			},
 		},
