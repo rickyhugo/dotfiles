@@ -1,1 +1,2 @@
-require("huen")
+require("config.lazy")
+require("config.lsp")
