@@ -6,6 +6,4 @@ return {
 	init_options = {
 		typescript = {},
 	},
-
-	settings = {},
 }
