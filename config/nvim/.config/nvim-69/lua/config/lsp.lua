@@ -1,3 +1,14 @@
+vim.lsp.config("*", {
+	capabilities = {
+		textDocument = {
+			semanticTokens = {
+				multilineTokenSupport = true,
+			},
+		},
+	},
+	root_markers = { ".git" },
+})
+
 vim.lsp.enable({
 	-- lua
 	"lua_ls",
@@ -7,10 +18,18 @@ vim.lsp.enable({
 	"ruff",
 
 	-- rust
+	"rust_analyzer",
 
 	-- go
+	"gopls",
 
 	-- web
+	"biome",
+	"eslint",
+	"tailwindcss",
+	"svelte",
+	"astro",
+	"vtsls",
 
 	-- shell,
 	"bashls",
@@ -32,10 +51,10 @@ vim.diagnostic.config({
 	underline = { severity_limit = vim.diagnostic.severity.ERROR },
 	signs = {
 		text = {
-			[vim.diagnostic.severity.ERROR] = icons.diagnostics.Error,
-			[vim.diagnostic.severity.WARN] = icons.diagnostics.Warn,
-			[vim.diagnostic.severity.INFO] = icons.diagnostics.Info,
-			[vim.diagnostic.severity.HINT] = icons.diagnostics.Hint,
+			[vim.diagnostic.severity.ERROR] = icons.diagnostic.Error,
+			[vim.diagnostic.severity.WARN] = icons.diagnostic.Warn,
+			[vim.diagnostic.severity.INFO] = icons.diagnostic.Info,
+			[vim.diagnostic.severity.HINT] = icons.diagnostic.Hint,
 		},
 	},
 	update_in_insert = true,
@@ -45,6 +64,9 @@ vim.diagnostic.config({
 		border = "rounded",
 	},
 })
+
+vim.api.nvim_create_user_command("LspInfo", "checkhealth vim.lsp", { desc = "Show LSP information" })
+vim.api.nvim_create_user_command("LspLog", "view " .. require("vim.lsp.log").get_filename(), { desc = "Show LSP logs" })
 
 vim.api.nvim_create_autocmd("LspAttach", {
 	group = vim.api.nvim_create_augroup("huen.lsp", {}),
@@ -60,6 +82,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
 		vim.keymap.set("n", "gD", vim.lsp.buf.declaration, { buffer = true, desc = "Go to declaration [LSP]" })
 		vim.keymap.set("n", "gi", vim.lsp.buf.implementation, { buffer = true, desc = "Go to implementation [LSP]" })
 		vim.keymap.set("n", "gt", vim.lsp.buf.type_definition, { buffer = true, desc = "Go to type definition [LSP]" })
+
 		vim.keymap.set("n", "K", function()
 			vim.lsp.buf.hover({ border = "rounded" })
 		end, { buffer = true, desc = "Hover symbol [LSP]" })

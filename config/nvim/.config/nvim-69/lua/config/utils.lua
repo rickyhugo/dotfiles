@@ -52,7 +52,7 @@ return {
 		},
 	},
 	icons = {
-		diagnostics = {
+		diagnostic = {
 			Error = "󰅚 ",
 			Warn = " ",
 			Hint = " ",

@@ -8,7 +8,6 @@ return {
 		"requirements.txt",
 		"Pipfile",
 		"pyrightconfig.json",
-		".git",
 	},
 
 	settings = {

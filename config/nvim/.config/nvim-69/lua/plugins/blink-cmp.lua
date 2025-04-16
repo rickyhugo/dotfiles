@@ -4,7 +4,7 @@ return {
 		"rafamadriz/friendly-snippets",
 		{
 			"saghen/blink.compat",
-			optional = true, -- make optional so it's only enabled if any extras need it
+			optional = true,
 			opts = {},
 			version = "*",
 			enabled = false,
@@ -12,8 +12,7 @@ return {
 		"moyiz/blink-emoji.nvim",
 		"fang2hou/blink-copilot",
 	},
-	event = "InsertEnter",
-	version = "*",
+	version = "1.*",
 	opts = {
 		sources = {
 			default = {
@@ -27,10 +26,12 @@ return {
 				"copilot",
 			},
 
-			per_filetype = { sql = { "dadbod" } },
+			per_filetype = {
+				sql = { "snippets", "dadbod", "buffer" },
+			},
 
 			providers = {
-				dadbod = { module = "vim_dadbod_completion.blink" },
+				dadbod = { name = "Dadbod", module = "vim_dadbod_completion.blink" },
 
 				emoji = {
 					module = "blink-emoji",

@@ -4,5 +4,4 @@ return {
 	init_options = {
 		provideFormatter = true,
 	},
-	root_markers = { ".git" },
 }
