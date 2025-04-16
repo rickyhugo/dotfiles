@@ -1,6 +1,42 @@
 return {
 	tools = {
-		mason_ensure_installed = {
+		lsp = {
+			-- lua
+			"lua_ls",
+
+			-- python
+			"basedpyright",
+			"ruff",
+
+			-- rust
+			"rust_analyzer",
+			-- "bacon-ls",
+
+			-- go
+			"gopls",
+
+			-- web
+			"biome",
+			"eslint",
+			"tailwindcss",
+			"svelte",
+			"astro",
+			"vtsls",
+
+			-- shell,
+			"bashls",
+
+			-- docker
+			"dockerls",
+			"docker_compose_language_service",
+
+			-- misc
+			"marksman",
+			"jsonls",
+			"taplo",
+			"yamlls",
+		},
+		lint = {
 			-- web
 			"prettierd",
 			"eslint_d",
@@ -35,7 +71,7 @@ return {
 			"impl",
 
 			-- rust
-			"bacon",
+			-- "bacon",
 
 			-- spelling
 			"cspell",

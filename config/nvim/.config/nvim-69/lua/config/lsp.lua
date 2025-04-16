@@ -9,52 +9,19 @@ vim.lsp.config("*", {
 	root_markers = { ".git" },
 })
 
-vim.lsp.enable({
-	-- lua
-	"lua_ls",
+local utils = require("config.utils")
 
-	-- python
-	"basedpyright",
-	"ruff",
+vim.lsp.enable(utils.tools.lsp)
 
-	-- rust
-	"rust_analyzer",
-
-	-- go
-	"gopls",
-
-	-- web
-	"biome",
-	"eslint",
-	"tailwindcss",
-	"svelte",
-	"astro",
-	"vtsls",
-
-	-- shell,
-	"bashls",
-
-	-- docker
-	"dockerls",
-	"docker_compose_language_service",
-
-	-- misc
-	"marksman",
-	"jsonls",
-	"taplo",
-	"yamlls",
-})
-
-local icons = require("config.utils").icons
 vim.diagnostic.config({
 	virtual_text = true,
 	underline = { severity_limit = vim.diagnostic.severity.ERROR },
 	signs = {
 		text = {
-			[vim.diagnostic.severity.ERROR] = icons.diagnostic.Error,
-			[vim.diagnostic.severity.WARN] = icons.diagnostic.Warn,
-			[vim.diagnostic.severity.INFO] = icons.diagnostic.Info,
-			[vim.diagnostic.severity.HINT] = icons.diagnostic.Hint,
+			[vim.diagnostic.severity.ERROR] = utils.icons.diagnostic.Error,
+			[vim.diagnostic.severity.WARN] = utils.icons.diagnostic.Warn,
+			[vim.diagnostic.severity.INFO] = utils.icons.diagnostic.Info,
+			[vim.diagnostic.severity.HINT] = utils.icons.diagnostic.Hint,
 		},
 	},
 	update_in_insert = true,
@@ -103,7 +70,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
 			vim.diagnostic.jump({ count = 1, float = true })
 		end, { buffer = true, desc = "Go to next diagnostic [LSP]" })
 
-		-- js/ts specific settings
+		-- INFO: js/ts specific settings
 		if client ~= nil and client.name == "vtsls" then
 			local ts_augroup = vim.api.nvim_create_augroup("TypescriptAutocmds", { clear = true })
 
