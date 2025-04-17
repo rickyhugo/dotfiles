@@ -16,7 +16,7 @@ return {
 			"gopls",
 
 			-- web
-			"biome",
+			-- "biome",
 			"eslint",
 			"tailwindcss",
 			"svelte",

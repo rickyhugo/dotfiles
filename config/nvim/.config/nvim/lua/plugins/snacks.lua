@@ -19,6 +19,8 @@ return {
 		notifier = {
 			enabled = true,
 			style = "compact",
+			top_down = false,
+			margin = { bottom = 1 },
 			-- INFO: remove redundant information notifications created when multiple LSPs are active
 			filter = function(notif)
 				return not (notif.level == "info" and notif.msg == "No information available")

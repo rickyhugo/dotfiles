@@ -59,7 +59,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
 			vim.diagnostic.jump({ count = 1, float = true })
 		end, { buffer = true, desc = "Go to next diagnostic [LSP]" })
 
-		-- INFO: js/ts specific settings
+		-- INFO: vtsls specific settings
 		if client ~= nil and client.name == "vtsls" then
 			local ts_augroup = vim.api.nvim_create_augroup("TypescriptAutocmds", { clear = true })
 
@@ -84,9 +84,31 @@ vim.api.nvim_create_autocmd("LspAttach", {
 			vim.api.nvim_create_autocmd("BufWritePost", {
 				group = ts_augroup,
 				pattern = { "package.json" },
-				command = "LspRestart eslint",
-				desc = "Restart eslint upon changes in 'package.json' [JS/TS]",
+				command = ":e",
+				desc = "Restart LSPs upon changes in 'package.json' [JS/TS]",
 			})
+		end
+
+		-- INFO: eslint specific settings
+		if client ~= nil and client.name == "eslint" then
+			local buf_path = vim.api.nvim_buf_get_name(0)
+			local start_dir = vim.fs.dirname(buf_path)
+
+			local marker_lookup = {}
+			for _, marker in ipairs(client.config.root_markers) do
+				marker_lookup[marker] = true
+			end
+
+			local root_file = vim.fs.find(function(name, _)
+				return marker_lookup[name]
+			end, { upward = true, path = start_dir })[1]
+
+			local root_dir = root_file and vim.fs.dirname(root_file) or start_dir
+
+			client.config.settings.workspaceFolder = {
+				uri = root_dir,
+				name = vim.fn.fnamemodify(root_dir, ":t"),
+			}
 		end
 
 		-- HACK: workaround for gopls not supporting semanticTokensProvider
