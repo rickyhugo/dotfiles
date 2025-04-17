@@ -1,6 +1,6 @@
 return {
 	cmd = { "biome", "lsp-proxy" },
-	root_markers = { "biome.json", "biome.jsonc" },
+	root_markers = { "biome.json", "biome.jsonc", ".git" },
 	filetypes = {
 		"astro",
 		"css",

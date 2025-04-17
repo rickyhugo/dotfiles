@@ -1,5 +1,8 @@
 return {
 	cmd = { "bash-language-server", "start" },
+	filetypes = { "bash", "sh" },
+	root_markers = { ".git" },
+
 	settings = {
 		bashIde = {
 			-- Glob pattern for finding and parsing shell script files in the workspace.
@@ -12,6 +15,4 @@ return {
 			globPattern = vim.env.GLOB_PATTERN or "*@(.sh|.inc|.bash|.command)",
 		},
 	},
-	filetypes = { "bash", "sh" },
-	root_markers = { ".git" },
 }

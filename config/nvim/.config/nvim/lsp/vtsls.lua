@@ -8,7 +8,7 @@ return {
 		"typescriptreact",
 		"typescript.tsx",
 	},
-	root_markers = { "tsconfig.json", "package.json", "jsconfig.json" },
+	root_markers = { "tsconfig.json", "package.json", "jsconfig.json", ".git" },
 
 	settings = {
 		complete_function_calls = true,

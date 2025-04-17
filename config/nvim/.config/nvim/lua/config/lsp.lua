@@ -1,14 +1,3 @@
-vim.lsp.config("*", {
-	capabilities = {
-		textDocument = {
-			semanticTokens = {
-				multilineTokenSupport = true,
-			},
-		},
-	},
-	root_markers = { ".git" },
-})
-
 local utils = require("config.utils")
 
 vim.lsp.enable(utils.tools.lsp)
