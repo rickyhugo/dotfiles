@@ -26,6 +26,7 @@ return {
 				},
 				lsp_trouble = true,
 				dadbod_ui = true,
+				snacks = { enabled = true },
 			},
 		})
 		vim.cmd([[colorscheme catppuccin]])

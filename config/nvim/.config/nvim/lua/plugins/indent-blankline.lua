@@ -26,4 +26,5 @@ return {
 		}
 	end,
 	main = "ibl",
+	enabled = false,
 }

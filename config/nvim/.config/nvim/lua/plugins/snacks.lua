@@ -7,7 +7,6 @@ return {
 		bigfile = { enabled = false },
 		dashboard = { enabled = false },
 		explorer = { enabled = false },
-		indent = { enabled = false },
 		input = { enabled = false },
 		scope = { enabled = false },
 		scroll = { enabled = false },
@@ -25,9 +24,18 @@ return {
 				return not (notif.level == "info" and notif.msg == "No information available")
 			end,
 		},
+
+		indent = {
+			enabled = true,
+			scope = { enabled = true },
+			chunk = { enabled = false },
+			animate = { enabled = false },
+		},
+
 		picker = { enabled = true },
 		quickfile = { enabled = true },
 	},
+
 	keys = {
 		{
 			"<leader>N",
