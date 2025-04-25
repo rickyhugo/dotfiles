@@ -9,7 +9,7 @@ code --install-extension esbenp.prettier-vscode
 code --install-extension grapecity.gc-excelviewer
 code --install-extension ms-python.debugpy
 code --install-extension ms-python.python
-code --install-extension ms-python.vscode-pylance
+code --install-extension detachhead.basedpyright
 code --install-extension ms-toolsai.jupyter
 code --install-extension ms-toolsai.jupyter-keymap
 code --install-extension ms-toolsai.jupyter-renderers
