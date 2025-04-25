@@ -36,7 +36,7 @@ return {
 				},
 				lualine_b = {
 					{
-						"diagnostic",
+						"diagnostics",
 						symbols = {
 							error = icons.diagnostic.Error,
 							warn = icons.diagnostic.Warn,
