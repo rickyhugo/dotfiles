@@ -7,7 +7,6 @@ return {
 		bigfile = { enabled = false },
 		dashboard = { enabled = false },
 		explorer = { enabled = false },
-		indent = { enabled = false },
 		input = { enabled = false },
 		scope = { enabled = false },
 		scroll = { enabled = false },
@@ -16,18 +15,29 @@ return {
 		dim = { enabled = false },
 		animate = { enabled = false },
 		zen = { enabled = false },
-		picker = { enabled = false },
-		quickfile = { enabled = false },
 
 		notifier = {
 			enabled = true,
 			style = "compact",
-			-- INFO: remove redundant notifications created when multiple LSPs runs
+			top_down = false,
+			margin = { bottom = 1, right = 0 },
+			-- INFO: remove redundant information notifications created when multiple LSPs are active
 			filter = function(notif)
 				return not (notif.level == "info" and notif.msg == "No information available")
 			end,
 		},
+
+		indent = {
+			enabled = true,
+			scope = { enabled = true },
+			chunk = { enabled = false },
+			animate = { enabled = false },
+		},
+
+		picker = { enabled = true },
+		quickfile = { enabled = true },
 	},
+
 	keys = {
 		{
 			"<leader>N",

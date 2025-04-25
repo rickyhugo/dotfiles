@@ -1,3 +1,4 @@
+-- borrowed from: https://www.lazyvim.org/plugins/editor#gitsignsnvim
 return {
 	"lewis6991/gitsigns.nvim",
 	opts = {

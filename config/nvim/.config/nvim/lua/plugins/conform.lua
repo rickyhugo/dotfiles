@@ -1,36 +1,40 @@
 return {
 	"stevearc/conform.nvim",
 	lazy = true,
-	event = { "BufReadPre", "BufNewFile" }, -- to disable, comment this out
-	config = function()
-		require("conform").setup({
-			formatters_by_ft = {
-				javascript = { "prettierd" },
-				typescript = { "prettierd" },
-				javascriptreact = { "prettierd" },
-				typescriptreact = { "prettierd" },
-				svelte = { "prettierd" },
-				css = { "prettierd" },
-				html = { "prettierd" },
-				json = { "prettierd" },
-				json5 = { "prettierd" },
-				yaml = { "prettierd" },
-				markdown = { "prettierd" },
-				graphql = { "prettierd" },
-				lua = { "stylua" },
-				python = { "ruff_fix", "ruff_format", "ruff_organize_imports" },
-				sh = { "shfmt", "shellharden" },
-				sql = { "sqlfluff" },
-				toml = { "taplo" },
-				rust = { "rustfmt" },
-				go = { "goimports", "gofumpt" },
-				tf = { "terraform_fmt" },
-			},
-			format_on_save = {
-				lsp_fallback = true,
-				async = false,
-				timeout_ms = 500,
-			},
-		})
+	event = { "BufReadPre", "BufNewFile" },
+	opts = {
+		formatters_by_ft = {
+			javascript = { "prettierd" },
+			typescript = { "prettierd" },
+			javascriptreact = { "prettierd" },
+			typescriptreact = { "prettierd" },
+			css = { "prettierd" },
+			html = { "prettierd" },
+			astro = { "prettierd" },
+			svelte = { "prettierd" },
+			graphql = { "prettierd" },
+			json = { "prettierd" },
+			json5 = { "prettierd" },
+			yaml = { "prettierd" },
+			markdown = { "prettierd" },
+			lua = { "stylua" },
+			python = { "ruff_fix", "ruff_format", "ruff_organize_imports" },
+			sh = { "shfmt", "shellharden" },
+			sql = { "sqruff" },
+			toml = { "taplo" },
+			rust = { "rustfmt" },
+			go = { "goimports", "gofumpt", "golines" },
+		},
+		format_on_save = {
+			lsp_fallback = true,
+			async = false,
+			timeout_ms = 500,
+		},
+	},
+	config = function(_, opts)
+		require("conform").setup(opts)
+		require("conform").formatters.golines = {
+			prepend_args = { "-m", "80" },
+		}
 	end,
 }

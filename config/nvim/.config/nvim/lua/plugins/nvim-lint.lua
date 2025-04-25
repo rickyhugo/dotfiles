@@ -2,15 +2,16 @@ return {
 	"mfussenegger/nvim-lint",
 	lazy = false,
 	opts = {
-		-- Event to trigger linters
 		events = { "BufWritePost", "BufReadPost", "InsertLeave" },
 		linters_by_ft = {
+			-- INFO: https://www.lazyvim.org/plugins/linting#nvim-lint
 			-- Use the "*" filetype to run linters on all filetypes.
 			-- ['*'] = { 'global linter' },
 			-- Use the "_" filetype to run linters on filetypes that don't have other linters configured.
 			-- ['_'] = { 'fallback linter' },
+
 			["*"] = { "codespell" },
-			sql = { "sqlfluff" },
+			sql = { "sqruff" },
 			zsh = { "zsh" },
 			-- sh = { "shellcheck" }, -- NOTE: included in the bash-language-server
 			docker = { "hadolint" },
@@ -22,9 +23,8 @@ return {
 			terrafrom = { "tflint" },
 			go = { "golangcilint" },
 			make = { "checkmake" },
+			rust = { "clippy" },
 		},
-		-- LazyVim extension to easily override linter options
-		-- or add custom linters.
 		---@type table<string,table>
 		linters = {
 			-- -- Example of using selene only when a selene.toml file is present
@@ -44,10 +44,11 @@ return {
 			},
 		},
 	},
+
 	config = function(_, opts)
 		local M = {}
-
 		local lint = require("lint")
+
 		for name, linter in pairs(opts.linters) do
 			if type(linter) == "table" and type(lint.linters[name]) == "table" then
 				lint.linters[name] = vim.tbl_deep_extend("force", lint.linters[name], linter)
@@ -59,6 +60,7 @@ return {
 				lint.linters[name] = linter
 			end
 		end
+
 		lint.linters_by_ft = opts.linters_by_ft
 
 		function M.debounce(ms, fn)
@@ -96,7 +98,7 @@ return {
 			names = vim.tbl_filter(function(name)
 				local linter = lint.linters[name]
 				if not linter then
-					print("Linter not found: " .. name)
+					vim.notify("Linter not found: " .. name, vim.log.levels.ERROR)
 				end
 				return linter and not (type(linter) == "table" and linter.condition and not linter.condition(ctx))
 			end, names)
