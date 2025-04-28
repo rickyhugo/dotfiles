@@ -57,8 +57,6 @@
   "python.analysis.autoImportCompletions": true,
   "python.languageServer": "Pylance",
   "python.testing.pytestEnabled": true,
-  "ruff.organizeImports": true,
-  "ruff.fixAll": true,
   "terminal.integrated.fontFamily": "JetBrains Mono",
   "terminal.integrated.fontSize": 14,
   "terminal.integrated.inheritEnv": false,
