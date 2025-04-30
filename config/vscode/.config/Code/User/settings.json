@@ -21,6 +21,7 @@
     "editor.wordWrap": "off",
     "prettier.proseWrap": "always"
   },
+  "sqlfluff.linter.run": "onSave",
   "catppuccin.accentColor": "flamingo",
   "catppuccin.bracketMode": "neovim",
   "catppuccin.italicKeywords": false,
@@ -122,7 +123,7 @@
       "commands": ["workbench.action.navigateDown"]
     },
     {
-      "before": ["<C-l>"],
+      "before": ["<C-k>"],
       "commands": ["workbench.action.navigateUp"]
     },
     {
@@ -178,5 +179,6 @@
   "python.defaultInterpreterPath": "/home/huen/lendo/dev/lendo-data-ml/ml-core/.venv",
   "redhat.telemetry.enabled": false,
   "notebook.lineNumbers": "on",
-  "chat.editing.alwaysSaveWithGeneratedChanges": true
+  "chat.editing.alwaysSaveWithGeneratedChanges": true,
+  "sqlfluff.dialect": "snowflake"
 }
