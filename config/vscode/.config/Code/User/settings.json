@@ -21,7 +21,6 @@
     "editor.wordWrap": "off",
     "prettier.proseWrap": "always"
   },
-  "sqlfluff.linter.run": "onSave",
   "catppuccin.accentColor": "flamingo",
   "catppuccin.bracketMode": "neovim",
   "catppuccin.italicKeywords": false,
@@ -180,5 +179,7 @@
   "redhat.telemetry.enabled": false,
   "notebook.lineNumbers": "on",
   "chat.editing.alwaysSaveWithGeneratedChanges": true,
-  "sqlfluff.dialect": "snowflake"
+  "sqlfluff.dialect": "snowflake",
+  "sqlfluff.linter.run": "onSave",
+  "sqlfluff.executablePath": "sqlfluff"
 }

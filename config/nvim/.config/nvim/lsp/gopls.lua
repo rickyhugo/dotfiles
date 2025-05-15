@@ -1,6 +1,6 @@
 return {
 	cmd = { "gopls" },
-	filetypes = { "rust" },
+	filetypes = { "go" },
 	root_markers = { "go.work", "go.mod", ".git" },
 
 	settings = {
