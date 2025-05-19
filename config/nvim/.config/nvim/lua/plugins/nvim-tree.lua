@@ -19,7 +19,7 @@ return {
 		view = {
 			side = "right",
 			signcolumn = "yes",
-			width = 36,
+			width = 40,
 			relativenumber = true,
 		},
 		-- INFO: floating tree

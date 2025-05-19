@@ -17,10 +17,10 @@ return {
 
 			-- web
 			-- "biome",
+			-- "astro",
 			"eslint",
 			"tailwindcss",
 			"svelte",
-			"astro",
 			"vtsls",
 
 			-- shell,

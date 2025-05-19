@@ -1,28 +1,146 @@
 local utils = require("config.utils")
 
-vim.lsp.enable(utils.tools.lsp)
-
-vim.diagnostic.config({
-	virtual_text = true,
-	underline = { severity_limit = vim.diagnostic.severity.ERROR },
-	signs = {
-		text = {
-			[vim.diagnostic.severity.ERROR] = utils.icons.diagnostic.Error,
-			[vim.diagnostic.severity.WARN] = utils.icons.diagnostic.Warn,
-			[vim.diagnostic.severity.INFO] = utils.icons.diagnostic.Info,
-			[vim.diagnostic.severity.HINT] = utils.icons.diagnostic.Hint,
+vim.lsp.config["basedpyright"] = {
+	settings = {
+		basedpyright = {
+			disableOrganizeImports = true,
+			analysis = {
+				autoSearchPaths = true,
+				autoImportCompletions = true,
+				diagnosticMode = "openFilesOnly",
+				logLevel = "Error",
+			},
 		},
 	},
-	update_in_insert = true,
-	severity_sort = true,
-	float = {
-		style = "minimal",
-		border = "rounded",
-	},
-})
+}
 
-vim.api.nvim_create_user_command("LspInfo", "checkhealth vim.lsp", { desc = "Show LSP information" })
-vim.api.nvim_create_user_command("LspLog", "view " .. require("vim.lsp.log").get_filename(), { desc = "Show LSP logs" })
+vim.lsp.config["lua_ls"] = {
+	settings = {
+		Lua = {
+			runtime = {
+				version = "LuaJIT",
+			},
+			diagnostics = {
+				globals = { "vim" },
+			},
+			workspace = {
+				library = {
+					vim.env.VIMRUNTIME,
+				},
+			},
+		},
+	},
+}
+
+vim.lsp.config["gopls"] = {
+	settings = {
+		gopls = {
+			gofumpt = true,
+			codelenses = {
+				gc_details = false,
+				generate = true,
+				regenerate_cgo = true,
+				run_govulncheck = true,
+				test = true,
+				tidy = true,
+				upgrade_dependency = true,
+				vendor = true,
+			},
+			hints = {
+				assignVariableTypes = true,
+				compositeLiteralFields = true,
+				compositeLiteralTypes = true,
+				constantValues = true,
+				functionTypeParameters = true,
+				parameterNames = true,
+				rangeVariableTypes = true,
+			},
+			analyses = {
+				nilness = true,
+				unusedparams = true,
+				unusedwrite = true,
+				useany = true,
+			},
+			usePlaceholders = true,
+			completeUnimported = true,
+			staticcheck = true,
+			directoryFilters = { "-.git", "-.vscode", "-.idea", "-.vscode-test", "-node_modules" },
+			semanticTokens = true,
+		},
+	},
+}
+
+vim.lsp.config["rust_analyzer"] = {
+	settings = {
+		cargo = {
+			allFeatures = true,
+			loadOutDirsFromCheck = true,
+			buildScripts = {
+				enable = true,
+			},
+		},
+		checkOnSave = false,
+		diagnostics = {
+			enable = false,
+		},
+		procMacro = {
+			enable = true,
+			ignored = {
+				["async-trait"] = { "async_trait" },
+				["napi-derive"] = { "napi" },
+				["async-recursion"] = { "async_recursion" },
+			},
+		},
+		files = {
+			excludeDirs = {
+				".direnv",
+				".git",
+				".github",
+				".gitlab",
+				"bin",
+				"node_modules",
+				"target",
+				"venv",
+				".venv",
+			},
+		},
+	},
+}
+
+vim.lsp.config["vtsls"] = {
+	settings = {
+		complete_function_calls = true,
+		vtsls = {
+			enableMoveToFileCodeAction = true,
+			autoUseWorkspaceTsdk = true,
+			experimental = {
+				maxInlayHintLength = 30,
+				completion = {
+					enableServerSideFuzzyMatch = true,
+				},
+			},
+		},
+		typescript = {
+			preferences = {
+				importModuleSpecifier = "non-relative",
+			},
+			updateImportsOnFileMove = { enabled = "always" },
+			suggest = {
+				completeFunctionCalls = true,
+			},
+			inlayHints = {
+				parameterNames = { enabled = "literals" },
+				parameterTypes = { enabled = true },
+				variableTypes = { enabled = true },
+				propertyDeclarationTypes = { enabled = true },
+				functionLikeReturnTypes = { enabled = true },
+				enumMemberValues = { enabled = true },
+			},
+		},
+	},
+}
+
+vim.lsp.enable(utils.tools.lsp)
 
 local LspBuf = {}
 LspBuf.action = setmetatable({}, {
@@ -88,31 +206,9 @@ vim.api.nvim_create_autocmd("LspAttach", {
 			vim.api.nvim_create_autocmd("BufWritePost", {
 				group = vim.api.nvim_create_augroup("WebdevAutocmds", { clear = true }),
 				pattern = { "package.json" },
-				command = "edit",
+				command = "LspRestart",
 				desc = "Restart LSPs upon change in 'package.json' [WEB]",
 			})
-		end
-
-		-- INFO: eslint specific settings
-		if client ~= nil and client.name == "eslint" then
-			local buf_path = vim.api.nvim_buf_get_name(0)
-			local start_dir = vim.fs.dirname(buf_path)
-
-			local root_marker_lookup = {}
-			for _, marker in ipairs(client.config.root_markers) do
-				root_marker_lookup[marker] = true
-			end
-
-			local root_file = vim.fs.find(function(name, _)
-				return root_marker_lookup[name]
-			end, { upward = true, path = start_dir })[1]
-
-			local root_dir = root_file and vim.fs.dirname(root_file) or start_dir
-
-			client.config.settings.workspaceFolder = {
-				uri = root_dir,
-				name = vim.fn.fnamemodify(root_dir, ":t"),
-			}
 		end
 
 		-- INFO: vtsls specific settings
