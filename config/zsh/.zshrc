@@ -81,6 +81,7 @@ export TAPLO_CONFIG="$HOME/personal/dev/dotfiles/templates/.taplo.toml"
 export PATH="$PATH:$HOME/.local/bin" # misc
 export PATH="$HOME/.cargo/bin:$PATH" # rust
 export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH" # kubectl krew
+export PATH="$HOME/sqlcl/bin:$PATH"
 
 # 🧰
 eval "$(~/.local/bin/mise activate zsh)"
