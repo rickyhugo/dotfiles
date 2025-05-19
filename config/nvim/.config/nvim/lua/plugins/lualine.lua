@@ -46,7 +46,7 @@ return {
 					},
 				},
 				lualine_c = {},
-				lualine_x = {},
+				lualine_x = { "location" },
 				lualine_y = {
 					{
 						"diff",
