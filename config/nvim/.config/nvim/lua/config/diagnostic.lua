@@ -1,14 +1,14 @@
-local utils = require("config.utils")
+local icons = require("config.icons")
 
 vim.diagnostic.config({
 	virtual_text = true,
 	underline = { severity_limit = vim.diagnostic.severity.ERROR },
 	signs = {
 		text = {
-			[vim.diagnostic.severity.ERROR] = utils.icons.diagnostic.Error,
-			[vim.diagnostic.severity.WARN] = utils.icons.diagnostic.Warn,
-			[vim.diagnostic.severity.INFO] = utils.icons.diagnostic.Info,
-			[vim.diagnostic.severity.HINT] = utils.icons.diagnostic.Hint,
+			[vim.diagnostic.severity.ERROR] = icons.diagnostic.Error,
+			[vim.diagnostic.severity.WARN] = icons.diagnostic.Warn,
+			[vim.diagnostic.severity.INFO] = icons.diagnostic.Info,
+			[vim.diagnostic.severity.HINT] = icons.diagnostic.Hint,
 		},
 	},
 	update_in_insert = true,

@@ -13,7 +13,7 @@ return {
 		end
 	end,
 	opts = function()
-		local icons = require("config.utils").icons
+		local icons = require("config.icons")
 		local opts = {
 			options = {
 				theme = "auto",
