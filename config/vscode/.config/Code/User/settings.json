@@ -25,13 +25,15 @@
   "catppuccin.bracketMode": "neovim",
   "catppuccin.italicKeywords": false,
   "editor.fontSize": 14,
-  "editor.fontFamily": "JetBrains Mono",
+  "editor.fontFamily": "Monaspace Argon Var",
   "editor.fontLigatures": true,
   "editor.formatOnSave": true,
   "editor.inlineSuggest.enabled": true,
   "editor.lineNumbers": "relative",
   "editor.minimap.enabled": false,
-  "editor.rulers": [80],
+  "editor.rulers": [
+    80
+  ],
   "editor.stickyScroll.enabled": true,
   "emojisense.languages": {
     "*": true
@@ -41,8 +43,14 @@
   "git.confirmSync": false,
   "git.openRepositoryInParentFolders": "never",
   "jupyter.askForKernelRestart": false,
-  "jupyter.runStartupCommands": ["%load_ext autoreload", "%autoreload 2"],
-  "jupyter.widgetScriptSources": ["jsdelivr.com", "unpkg.com"],
+  "jupyter.runStartupCommands": [
+    "%load_ext autoreload",
+    "%autoreload 2"
+  ],
+  "jupyter.widgetScriptSources": [
+    "jsdelivr.com",
+    "unpkg.com"
+  ],
   "notebook.defaultFormatter": "charliermarsh.ruff",
   "notebook.cellToolbarLocation": {
     "default": "right",
@@ -57,7 +65,7 @@
   "python.analysis.autoImportCompletions": true,
   "python.languageServer": "Pylance",
   "python.testing.pytestEnabled": true,
-  "terminal.integrated.fontFamily": "JetBrains Mono",
+  "terminal.integrated.fontFamily": "Monaspace Argon Var",
   "terminal.integrated.fontSize": 14,
   "terminal.integrated.inheritEnv": false,
   "vim.easymotion": false,
@@ -66,68 +74,140 @@
   "vim.leader": "<space>",
   "vim.normalModeKeyBindingsNonRecursive": [
     {
-      "before": ["leader", "w"],
-      "commands": ["workbench.action.files.save"]
+      "before": [
+        "leader",
+        "w"
+      ],
+      "commands": [
+        "workbench.action.files.save"
+      ]
     },
     {
-      "before": ["K"],
-      "commands": ["editor.action.showHover"]
+      "before": [
+        "K"
+      ],
+      "commands": [
+        "editor.action.showHover"
+      ]
     },
     {
-      "before": ["g", "r"],
-      "commands": ["editor.action.goToReferences"]
+      "before": [
+        "g",
+        "r"
+      ],
+      "commands": [
+        "editor.action.goToReferences"
+      ]
     },
     {
-      "before": ["[", "d"],
-      "commands": ["editor.action.marker.prev"],
+      "before": [
+        "[",
+        "d"
+      ],
+      "commands": [
+        "editor.action.marker.prev"
+      ],
       "when": "editorFocus"
     },
     {
-      "before": ["]", "d"],
-      "commands": ["editor.action.marker.next"],
+      "before": [
+        "]",
+        "d"
+      ],
+      "commands": [
+        "editor.action.marker.next"
+      ],
       "when": "editorFocus"
     },
     {
-      "before": ["leader", "t", "t"],
-      "commands": ["workbench.view.explorer"],
+      "before": [
+        "leader",
+        "t",
+        "t"
+      ],
+      "commands": [
+        "workbench.view.explorer"
+      ],
       "when": "viewContainer.workbench.view.explorer.enabled"
     },
     {
-      "before": ["leader", "b"],
-      "commands": ["workbench.action.toggleSidebarVisibility"],
+      "before": [
+        "leader",
+        "b"
+      ],
+      "commands": [
+        "workbench.action.toggleSidebarVisibility"
+      ],
       "when": "editorFocus"
     },
     {
-      "after": ["<C-d>", "z", "z"],
-      "before": ["<C-d>"]
+      "after": [
+        "<C-d>",
+        "z",
+        "z"
+      ],
+      "before": [
+        "<C-d>"
+      ]
     },
     {
-      "after": ["<C-u>", "z", "z"],
-      "before": ["<C-u>"]
+      "after": [
+        "<C-u>",
+        "z",
+        "z"
+      ],
+      "before": [
+        "<C-u>"
+      ]
     },
     {
-      "before": ["leader", "z"],
-      "commands": ["workbench.action.toggleZenMode"]
+      "before": [
+        "leader",
+        "z"
+      ],
+      "commands": [
+        "workbench.action.toggleZenMode"
+      ]
     },
     {
-      "before": ["<C-r>"],
-      "commands": ["undo"]
+      "before": [
+        "<C-r>"
+      ],
+      "commands": [
+        "undo"
+      ]
     },
     {
-      "before": ["<C-h>"],
-      "commands": ["workbench.action.navigateLeft"]
+      "before": [
+        "<C-h>"
+      ],
+      "commands": [
+        "workbench.action.navigateLeft"
+      ]
     },
     {
-      "before": ["<C-j>"],
-      "commands": ["workbench.action.navigateDown"]
+      "before": [
+        "<C-j>"
+      ],
+      "commands": [
+        "workbench.action.navigateDown"
+      ]
     },
     {
-      "before": ["<C-k>"],
-      "commands": ["workbench.action.navigateUp"]
+      "before": [
+        "<C-k>"
+      ],
+      "commands": [
+        "workbench.action.navigateUp"
+      ]
     },
     {
-      "before": ["<C-l>"],
-      "commands": ["workbench.action.navigateRight"]
+      "before": [
+        "<C-l>"
+      ],
+      "commands": [
+        "workbench.action.navigateRight"
+      ]
     },
     {
       "after": [
@@ -151,11 +231,19 @@
         "<Left>",
         "<Left>"
       ],
-      "before": ["leader", "s"]
+      "before": [
+        "leader",
+        "s"
+      ]
     },
     {
-      "before": ["z", "z"],
-      "commands": ["notebook.centerActiveCell"],
+      "before": [
+        "z",
+        "z"
+      ],
+      "commands": [
+        "notebook.centerActiveCell"
+      ],
       "when": "notebookEditorFocused"
     }
   ],

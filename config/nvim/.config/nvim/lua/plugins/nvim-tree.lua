@@ -12,7 +12,7 @@ return {
 		renderer = {
 			indent_markers = { enable = true },
 			icons = {
-				padding = "  ",
+				padding = " ",
 				git_placement = "after",
 			},
 		},
