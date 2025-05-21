@@ -98,7 +98,6 @@ esac
 # bun
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
-. "/home/huen/.deno/env"
 
 # bun completions
 [ -s "/home/huen/.bun/_bun" ] && source "/home/huen/.bun/_bun"
