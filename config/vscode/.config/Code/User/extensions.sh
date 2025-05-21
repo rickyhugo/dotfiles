@@ -24,3 +24,4 @@ code --install-extension yzane.markdown-pdf
 code --install-extension tamasfe.even-better-toml
 code --install-extension dorzey.vscode-sqlfluff
 code --install-extension snowflake.snowflake-vsc
+code --install-extension ptweir.python-string-sql
