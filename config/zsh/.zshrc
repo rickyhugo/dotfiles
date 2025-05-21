@@ -55,7 +55,8 @@ alias up='aguu -y && agar -y'
 alias k='kubectl'
 alias kctx='kubectl ctx'
 alias kns='kubectl ns'
-alias xclip="xclip -selection c"
+alias xclip='xclip -selection c'
+alias 'tms k'='tms kill'
 
 # 📚
 HISTSIZE=5000
