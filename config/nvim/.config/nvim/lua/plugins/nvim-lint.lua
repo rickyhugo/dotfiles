@@ -11,7 +11,6 @@ return {
 			-- ['_'] = { 'fallback linter' },
 
 			["*"] = { "codespell" },
-			sql = { "sqruff" },
 			zsh = { "zsh" },
 			-- sh = { "shellcheck" }, -- NOTE: included in the bash-language-server
 			docker = { "hadolint" },

@@ -9,11 +9,14 @@ return {
 			version = "*",
 			enabled = false,
 		},
+		{ "L3MON4D3/LuaSnip", version = "v2.*" },
 		"moyiz/blink-emoji.nvim",
 		"fang2hou/blink-copilot",
 	},
 	version = "1.*",
 	opts = {
+		snippets = { preset = "luasnip" },
+
 		sources = {
 			default = {
 				"lsp",

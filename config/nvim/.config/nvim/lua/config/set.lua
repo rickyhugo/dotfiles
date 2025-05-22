@@ -69,5 +69,5 @@ vim.opt.fillchars = { eob = " " } -- Remove '~'
 vim.opt.showmode = false
 vim.opt.showcmd = false
 
--- TODO: set this when plugins have catched up
+-- TODO: set this when plugins have caught up
 -- vim.opt.winborder = "rounded"

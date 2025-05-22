@@ -11,7 +11,7 @@ return {
 				},
 			},
 		},
-		snippet_engine = "nvim",
+		snippet_engine = "luasnip",
 	},
 	keys = {
 		{

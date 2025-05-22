@@ -1,3 +1,1 @@
-# TODO
-
-- [ ] add '.git' root markers
+# nvim

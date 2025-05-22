@@ -13,7 +13,7 @@ return {
 		end
 	end,
 	opts = function()
-		local icons = require("config.utils").icons
+		local icons = require("config.icons")
 		local opts = {
 			options = {
 				theme = "auto",
@@ -36,7 +36,7 @@ return {
 				},
 				lualine_b = {
 					{
-						"diagnostic",
+						"diagnostics",
 						symbols = {
 							error = icons.diagnostic.Error,
 							warn = icons.diagnostic.Warn,
@@ -46,7 +46,7 @@ return {
 					},
 				},
 				lualine_c = {},
-				lualine_x = {},
+				lualine_x = { "location" },
 				lualine_y = {
 					{
 						"diff",
