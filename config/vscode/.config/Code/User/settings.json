@@ -181,5 +181,9 @@
   "chat.editing.alwaysSaveWithGeneratedChanges": true,
   "sqlfluff.dialect": "snowflake",
   "sqlfluff.linter.run": "onSave",
-  "sqlfluff.executablePath": "sqlfluff"
+  "sqlfluff.executablePath": "sqlfluff",
+  "basedpyright.analysis.inlayHints.variableTypes": false,
+  "basedpyright.analysis.inlayHints.functionReturnTypes": false,
+  "basedpyright.analysis.inlayHints.callArgumentNames": false,
+  "basedpyright.analysis.typeCheckingMode": "all"
 }

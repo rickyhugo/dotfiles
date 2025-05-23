@@ -9,7 +9,6 @@ code --install-extension esbenp.prettier-vscode
 code --install-extension grapecity.gc-excelviewer
 code --install-extension ms-python.debugpy
 code --install-extension ms-python.python
-code --install-extension ms-python.vscode-pylance
 code --install-extension ms-toolsai.jupyter
 code --install-extension ms-toolsai.jupyter-keymap
 code --install-extension ms-toolsai.jupyter-renderers
@@ -25,3 +24,4 @@ code --install-extension tamasfe.even-better-toml
 code --install-extension dorzey.vscode-sqlfluff
 code --install-extension snowflake.snowflake-vsc
 code --install-extension ptweir.python-string-sql
+code --install-extension detachhead.basedpyright
