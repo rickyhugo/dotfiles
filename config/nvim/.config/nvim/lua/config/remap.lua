@@ -37,9 +37,6 @@ keymap("n", "<M-j>", "<C-w>j", { desc = "Navigate to bottom pane" })
 keymap("n", "<M-k>", "<C-w>k", { desc = "Navigate to top pane" })
 keymap("n", "<M-l>", "<C-w>l", { desc = "Navigate to right pane" })
 
-keymap("n", ",b", "F_", { desc = "Backward snake case navigation" })
-keymap("n", ",e", "f_", { desc = "Forward snake case navigation" })
-
 keymap("n", "<C-h>", "10<C-w>>", { desc = "Resize buffer (left)" })
 keymap("n", "<C-j>", "10<C-w>+", { desc = "Resize buffer (bottom)" })
 keymap("n", "<C-k>", "10<C-w>-", { desc = "Resize buffer (top)" })
