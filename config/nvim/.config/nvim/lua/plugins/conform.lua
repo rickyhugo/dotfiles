@@ -21,7 +21,7 @@ return {
 			python = { "ruff_fix", "ruff_format", "ruff_organize_imports" },
 			sh = { "shfmt", "shellharden" },
 			toml = { "taplo" },
-			rust = { "rustfmt" },
+			rust = { lsp_fallback = "prefer" },
 			go = { "goimports", "gofumpt", "golines" },
 		},
 		format_on_save = {

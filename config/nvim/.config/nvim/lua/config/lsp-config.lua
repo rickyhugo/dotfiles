@@ -77,9 +77,9 @@ vim.lsp.config["rust_analyzer"] = {
 				enable = true,
 			},
 		},
-		checkOnSave = false,
+		checkOnSave = true,
 		diagnostics = {
-			enable = false,
+			enable = true,
 		},
 		procMacro = {
 			enable = true,
