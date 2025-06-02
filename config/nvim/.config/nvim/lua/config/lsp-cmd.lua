@@ -17,25 +17,6 @@ local M = {}
 
 M.vtsls = function()
 	local augroup = vim.api.nvim_create_augroup("VtslsAutocmds", { clear = true })
-	local pattern = { "*.js", "*.jsx", "*.ts", "*.tsx" }
-
-	vim.api.nvim_create_autocmd("BufWritePre", {
-		group = augroup,
-		pattern = pattern,
-		callback = function()
-			return require("vtsls").commands.organize_imports(vim.api.nvim_get_current_buf())
-		end,
-		desc = "Organize imports [VTSLS]",
-	})
-
-	vim.api.nvim_create_autocmd("BufWritePre", {
-		group = augroup,
-		pattern = pattern,
-		callback = function()
-			return require("vtsls").commands.fix_all(vim.api.nvim_get_current_buf())
-		end,
-		desc = "Autofix problems [VTSLS]",
-	})
 
 	vim.api.nvim_create_autocmd("BufWritePost", {
 		group = augroup,
@@ -43,6 +24,14 @@ M.vtsls = function()
 		command = "LspRestart",
 		desc = "Restart LSPs upon changes in 'package.json' [VTSLS]",
 	})
+
+	vim.keymap.set("n", "<leader>co", function()
+		return require("vtsls").commands.organize_imports(vim.api.nvim_get_current_buf())
+	end, { buffer = true, desc = "Organize imports [VTSLS]" })
+
+	vim.keymap.set("n", "<leader>cD", function()
+		return require("vtsls").commands.fix_all(vim.api.nvim_get_current_buf())
+	end, { buffer = true, desc = "Fix all diagnostics [VTSLS]" })
 end
 
 M.svelte = function()
