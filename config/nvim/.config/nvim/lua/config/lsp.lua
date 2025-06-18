@@ -46,6 +46,11 @@ vim.api.nvim_create_autocmd("LspAttach", {
 			end
 		end
 
+		-- INFO: disable hover in favor of basedpyright
+		if client ~= nil and client.name == "ruff" then
+			client.server_capabilities.hoverProvider = false
+		end
+
 		-- HACK: workaround for gopls not supporting semanticTokensProvider
 		-- https://github.com/golang/go/issues/54531#issuecomment-1464982242
 		if client ~= nil and client.name == "gopls" and not client.server_capabilities.semanticTokensProvider then
