@@ -214,7 +214,7 @@ bindsym $mod+b exec --no-startup-id google-chrome-stable --new-window
 bindsym $mod+t layout toggle tabbed splith splitv
 
 # function keys
-set $brightness_increment 10
+set $brightness_increment 1
 bindsym XF86MonBrightnessUp exec --no-startup-id brightnessctl set +$brightness_increment% # increase screen brightness
 bindsym XF86MonBrightnessDown exec --no-startup-id brightnessctl set $brightness_increment%- # decrease screen brightness
 
