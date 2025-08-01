@@ -10,11 +10,18 @@ fi
 source "${ZINIT_HOME}/zinit.zsh"
 
 # 🔌
+zinit ice pick"async.zsh" src"pure.zsh"
+zinit light rickyhugo/pure
+
 zinit wait lucid for \
   Aloxaf/fzf-tab \
+  jeffreytse/zsh-vi-mode \
   OMZP::tmux \
-  OMZP::git \
   OMZP::ubuntu \
+  OMZP::git \
+  OMZP::gh \
+  OMZP::uv \
+  OMZL::async_prompt.zsh \
   OMZL::directories.zsh # NOTE: `cd` aliases
 
 # NOTE: https://github.com/zdharma-continuum/fast-syntax-highlighting?tab=readme-ov-file#zinit
@@ -25,12 +32,9 @@ zinit wait lucid light-mode for \
   atload"_zsh_autosuggest_start" \
       zsh-users/zsh-autosuggestions \
   blockf atpull'zinit creinstall -q .' \
-      zsh-users/zsh-completions
-
-zinit ice compile'async.zsh' pick'async.zsh' src'pure.zsh'
-zinit light rickyhugo/pure
-
-zinit ice depth=1; zinit light jeffreytse/zsh-vi-mode
+      zsh-users/zsh-completions \
+  as"completion" \
+        OMZP::docker/completions/_docker
 
 # 📦
 # NOTE: might not work if mise is activated after zinit since `go` would not be on path
@@ -38,9 +42,10 @@ zinit pack"default+keys" for fzf
 
 # 💅
 zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'
-zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
 zstyle ':completion:*' menu no
 zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls --color $realpath'
+zstyle ':completion:*:*:docker:*' option-stacking yes
+zstyle ':completion:*:*:docker-*:*' option-stacking yes
 
 # ⚡
 alias vim='nvim'
@@ -51,15 +56,13 @@ alias lzd='lazydocker'
 alias cat='batcat'
 alias c='batcat'
 alias up='aguu -y && agar -y'
-alias k='kubectl'
 alias kctx='kubectl ctx'
 alias kns='kubectl ns'
 alias xclip="xclip -selection c"
 
 # 📚
-HISTSIZE=5000
 HISTFILE=~/.zsh_history
-SAVEHIST=$HISTSIZE
+SAVEHIST=5000
 HISTDUP=erase
 setopt appendhistory
 setopt sharehistory
@@ -68,6 +71,7 @@ setopt hist_ignore_all_dups
 setopt hist_save_no_dups
 setopt hist_ignore_dups
 setopt hist_find_no_dups
+setopt promptsubst
 
 # ⚙️
 export EDITOR=nvim
