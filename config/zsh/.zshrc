@@ -7,6 +7,7 @@ if [ ! -d "$ZINIT_HOME" ]; then
    mkdir -p "$(dirname $ZINIT_HOME)"
    git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
 fi
+setopt promptsubst
 source "${ZINIT_HOME}/zinit.zsh"
 
 # 🔌
@@ -71,7 +72,6 @@ setopt hist_ignore_all_dups
 setopt hist_save_no_dups
 setopt hist_ignore_dups
 setopt hist_find_no_dups
-setopt promptsubst
 
 # ⚙️
 export EDITOR=nvim
