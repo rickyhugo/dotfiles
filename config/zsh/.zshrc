@@ -18,6 +18,7 @@ zinit wait lucid for \
   OMZP::git \
   OMZP::gh \
   OMZP::uv \
+  OMZP::rust \
   OMZP::kubectl \
   OMZP::helm \
   OMZL::async_prompt.zsh \
