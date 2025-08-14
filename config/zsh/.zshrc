@@ -1,6 +1,3 @@
-# HACK: prevent 'zsh-vi-mode' from overriding keybindings
-ZVM_INIT_MODE=sourcing
-
 # 📥
 ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
 if [ ! -d "$ZINIT_HOME" ]; then
@@ -8,7 +5,6 @@ if [ ! -d "$ZINIT_HOME" ]; then
    git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
 fi
 
-setopt promptsubst
 source "${ZINIT_HOME}/zinit.zsh"
 
 # 🔌
@@ -17,12 +13,13 @@ zinit light rickyhugo/pure
 
 zinit wait lucid for \
   Aloxaf/fzf-tab \
-  jeffreytse/zsh-vi-mode \
   OMZP::tmux \
   OMZP::ubuntu \
   OMZP::git \
   OMZP::gh \
   OMZP::uv \
+  OMZP::kubectl \
+  OMZP::helm \
   OMZL::async_prompt.zsh \
   OMZL::directories.zsh # NOTE: `cd` aliases
 
@@ -37,6 +34,14 @@ zinit wait lucid light-mode for \
       zsh-users/zsh-completions \
   as"completion" \
         OMZP::docker/completions/_docker
+
+function zvm_config() {
+  ZVM_INIT_MODE=sourcing
+  ZVM_LINE_INIT_MODE=$ZVM_MODE_INSERT
+}
+
+zinit ice depth=1
+zinit light jeffreytse/zsh-vi-mode
 
 # 📦
 # NOTE: might not work if mise is activated after zinit since `go` would not be on path
@@ -60,14 +65,17 @@ alias lzd='lazydocker'
 alias cat='batcat'
 alias c='batcat'
 alias up='aguu -y && agar -y'
+alias k='kubectl'
 alias kctx='kubectl ctx'
 alias kns='kubectl ns'
 alias xclip="xclip -selection c"
 
 # 📚
 HISTFILE=~/.zsh_history
-SAVEHIST=5000
+HISTSIZE=5000
+SAVEHIST=$HISTSIZE
 HISTDUP=erase
+setopt promptsubst
 setopt appendhistory
 setopt sharehistory
 setopt hist_ignore_space
