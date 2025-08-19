@@ -24,7 +24,7 @@
   "catppuccin.accentColor": "flamingo",
   "catppuccin.bracketMode": "neovim",
   "catppuccin.italicKeywords": false,
-  "editor.fontSize": 16,
+  "editor.fontSize": 15,
   "editor.fontFamily": "Iosevka Term",
   "editor.fontLigatures": true,
   "editor.formatOnSave": true,
@@ -58,7 +58,7 @@
   "python.languageServer": "Pylance",
   "python.testing.pytestEnabled": true,
   "terminal.integrated.fontFamily": "Iosevka Term",
-  "terminal.integrated.fontSize": 16,
+  "terminal.integrated.fontSize": 15,
   "terminal.integrated.inheritEnv": false,
   "vim.easymotion": false,
   "vim.hlsearch": false,
@@ -176,12 +176,12 @@
   "autoDocstring.docstringFormat": "numpy",
   "autoDocstring.includeExtendedSummary": true,
   "redhat.telemetry.enabled": false,
-  "notebook.lineNumbers": "on",
   "sqlfluff.dialect": "snowflake",
   "sqlfluff.linter.run": "onSave",
   "sqlfluff.executablePath": "sqlfluff",
   "basedpyright.analysis.inlayHints.variableTypes": false,
   "basedpyright.analysis.inlayHints.functionReturnTypes": false,
   "basedpyright.analysis.inlayHints.callArgumentNames": false,
-  "basedpyright.analysis.typeCheckingMode": "all"
+  "basedpyright.analysis.typeCheckingMode": "all",
+  "notebook.lineNumbers": "on"
 }

@@ -27,10 +27,20 @@ zinit light rickyhugo/pure
 zinit wait lucid for \
   Aloxaf/fzf-tab \
   OMZP::tmux \
-  OMZP::git \
   OMZP::ubuntu \
+  OMZP::git \
+  OMZP::gh \
+  OMZP::uv \
+  OMZP::docker \
+  OMZP::kubectl \
+  OMZP::helm \
+  OMZL::async_prompt.zsh \
   OMZL::directories.zsh # NOTE: `cd` aliases
 
+function zvm_config() {
+  ZVM_INIT_MODE=sourcing
+  ZVM_LINE_INIT_MODE=$ZVM_MODE_INSERT
+}
 zinit ice depth=1; zinit light jeffreytse/zsh-vi-mode
 
 # 📦
@@ -42,6 +52,8 @@ zstyle ':completion:*' matcher-list 'm:{a-z}={A-Za-z}'
 zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
 zstyle ':completion:*' menu no
 zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls --color $realpath'
+zstyle ':completion:*:*:docker:*' option-stacking yes
+zstyle ':completion:*:*:docker-*:*' option-stacking yes
 
 # ⚡
 alias vim='nvim'
@@ -62,6 +74,7 @@ HISTSIZE=5000
 HISTFILE=~/.zsh_history
 SAVEHIST=$HISTSIZE
 HISTDUP=erase
+setopt promptsubst
 setopt appendhistory
 setopt sharehistory
 setopt hist_ignore_space
