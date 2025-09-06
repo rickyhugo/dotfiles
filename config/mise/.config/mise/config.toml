@@ -12,3 +12,4 @@ GH_CONFIG_DIR = "/home/huen/.config/gh/personal"
 
 [settings]
 experimental = true
+idiomatic_version_file_enable_tools = ["rust"]
