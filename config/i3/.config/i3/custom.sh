@@ -13,3 +13,8 @@ xinput set-prop "$touchpad" "libinput Tapping Enabled" 1
 
 # proper screen locking
 xautolock -detectsleep -time 3 -locker \"i3lock -c 000000\"
+
+# disable locking when idle
+xset s off
+xset -dpms
+xset s noblank

@@ -8,9 +8,6 @@ fi
 source "${ZINIT_HOME}/zinit.zsh"
 
 # 🔌
-zinit ice pick"async.zsh" src"pure.zsh"
-zinit light rickyhugo/pure
-
 zinit wait lucid for \
   Aloxaf/fzf-tab \
   OMZP::tmux \
@@ -35,6 +32,9 @@ zinit wait lucid light-mode for \
       zsh-users/zsh-completions \
   as"completion" \
         OMZP::docker/completions/_docker
+
+zinit ice pick"async.zsh" src"pure.zsh"
+zinit light rickyhugo/pure
 
 function zvm_config() {
   ZVM_INIT_MODE=sourcing
