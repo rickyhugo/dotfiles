@@ -183,5 +183,7 @@
   "basedpyright.analysis.inlayHints.functionReturnTypes": false,
   "basedpyright.analysis.inlayHints.callArgumentNames": false,
   "basedpyright.analysis.typeCheckingMode": "all",
-  "notebook.lineNumbers": "on"
+  "notebook.lineNumbers": "on",
+  "csv.enabled": true,
+  "github.copilot.nextEditSuggestions.enabled": true
 }

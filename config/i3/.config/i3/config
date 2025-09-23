@@ -242,7 +242,7 @@ exec_always --no-startup-id unclutter -root -reset -idle 1.5
 # move workspace to monitor
 bindsym $mod+m move workspace to output left
 
-set $monitor_id DP-1-1.1.8
+set $monitor_id DP-1-1
 set $laptop_id eDP-1
 
 # set $laptop_res 3840x2160
