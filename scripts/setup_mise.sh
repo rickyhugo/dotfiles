@@ -27,5 +27,6 @@ if ! mise x gh -- gh auth status --hostname github.com >/dev/null 2>&1; then
 fi
 mise x gh -- gh auth setup-git --hostname github.com
 
-# Common, OS-independent dev setup.
+# Common, OS-independent dev setup. MISE_ENV is inherited from the bootstrap call.
+echo "MISE_ENV=${MISE_ENV:-<unset, base>}"
 mise bootstrap --adopt rickyhugo/mise-setup
