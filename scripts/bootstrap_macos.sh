@@ -40,7 +40,9 @@ fi
 brew list curl >/dev/null 2>&1 || brew install curl
 brew list git >/dev/null 2>&1 || brew install git
 if [[ -d "$(brew --prefix curl)/bin" ]]; then
-  export PATH="$(brew --prefix curl)/bin:$PATH"
+  CURL_BIN="$(brew --prefix curl)/bin"
+  PATH="$CURL_BIN:$PATH"
+  export PATH
 fi
 
 # OS-specific done; hand off to common, OS-independent setup.
