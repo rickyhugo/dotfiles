@@ -1,0 +1,209 @@
+{
+  "[json][jsonc][markdown][toml][yaml]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "always"
+    },
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true,
+    "editor.formatOnType": false
+  },
+  "[python]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    },
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.formatOnType": false
+  },
+  "[markdown]": {
+    "editor.wordWrapColumn": 80,
+    "editor.wordWrap": "off",
+    "prettier.proseWrap": "always"
+  },
+  "catppuccin.accentColor": "flamingo",
+  "catppuccin.bracketMode": "neovim",
+  "catppuccin.italicKeywords": false,
+  "editor.fontSize": 16,
+  "editor.fontFamily": "Iosevka Term",
+  "editor.fontLigatures": true,
+  "editor.formatOnSave": true,
+  "editor.inlineSuggest.enabled": true,
+  "editor.lineNumbers": "relative",
+  "editor.minimap.enabled": false,
+  "editor.rulers": [80],
+  "editor.stickyScroll.enabled": true,
+  "emojisense.languages": {
+    "*": true
+  },
+  "explorer.confirmDelete": false,
+  "explorer.confirmDragAndDrop": false,
+  "git.confirmSync": false,
+  "git.openRepositoryInParentFolders": "never",
+  "jupyter.askForKernelRestart": false,
+  "jupyter.runStartupCommands": ["%load_ext autoreload", "%autoreload 2"],
+  "jupyter.widgetScriptSources": ["jsdelivr.com", "unpkg.com"],
+  "notebook.defaultFormatter": "charliermarsh.ruff",
+  "notebook.cellToolbarLocation": {
+    "default": "right",
+    "jupyter-notebook": "right"
+  },
+  "notebook.codeActionsOnSave": {
+    "notebook.source.fixAll": "explicit",
+    "notebook.source.organizeImports": "explicit"
+  },
+  "notebook.formatOnSave.enabled": true,
+  "notebook.output.textLineLimit": 500,
+  "python.analysis.autoImportCompletions": true,
+  "python.languageServer": "None",
+  "python.testing.pytestEnabled": true,
+  "terminal.integrated.fontFamily": "Iosevka Term",
+  "terminal.integrated.fontSize": 15,
+  "terminal.integrated.inheritEnv": false,
+  "vim.easymotion": false,
+  "vim.hlsearch": false,
+  "vim.incsearch": true,
+  "vim.leader": "<space>",
+  "vim.normalModeKeyBindingsNonRecursive": [
+    {
+      "before": ["leader", "w"],
+      "commands": ["workbench.action.files.save"]
+    },
+    {
+      "before": ["K"],
+      "commands": ["editor.action.showHover"]
+    },
+    {
+      "before": ["g", "r"],
+      "commands": ["editor.action.goToReferences"]
+    },
+    {
+      "before": ["[", "d"],
+      "commands": ["editor.action.marker.prev"],
+      "when": "editorFocus"
+    },
+    {
+      "before": ["]", "d"],
+      "commands": ["editor.action.marker.next"],
+      "when": "editorFocus"
+    },
+    {
+      "before": ["leader", "t", "t"],
+      "commands": ["workbench.view.explorer"],
+      "when": "viewContainer.workbench.view.explorer.enabled"
+    },
+    {
+      "before": ["leader", "b"],
+      "commands": ["workbench.action.toggleSidebarVisibility"],
+      "when": "editorFocus"
+    },
+    {
+      "after": ["<C-d>", "z", "z"],
+      "before": ["<C-d>"]
+    },
+    {
+      "after": ["<C-u>", "z", "z"],
+      "before": ["<C-u>"]
+    },
+    {
+      "before": ["leader", "z"],
+      "commands": ["workbench.action.toggleZenMode"]
+    },
+    {
+      "before": ["<C-r>"],
+      "commands": ["undo"]
+    },
+    {
+      "before": ["<C-h>"],
+      "commands": ["workbench.action.navigateLeft"]
+    },
+    {
+      "before": ["<C-j>"],
+      "commands": ["workbench.action.navigateDown"]
+    },
+    {
+      "before": ["<C-k>"],
+      "commands": ["workbench.action.navigateUp"]
+    },
+    {
+      "before": ["<C-l>"],
+      "commands": ["workbench.action.navigateRight"]
+    },
+    {
+      "after": [
+        ":",
+        "%",
+        "s",
+        "/",
+        "\\",
+        "<",
+        "<C-r>",
+        "<C-w>",
+        "\\",
+        ">",
+        "/",
+        "<C-r>",
+        "<C-w>",
+        "/",
+        "g",
+        "I",
+        "<Left>",
+        "<Left>",
+        "<Left>"
+      ],
+      "before": ["leader", "s"]
+    },
+    {
+      "before": ["z", "z"],
+      "commands": ["notebook.centerActiveCell"],
+      "when": "notebookEditorFocused"
+    }
+  ],
+  "vim.surround": true,
+  "vim.useCtrlKeys": true,
+  "vim.useSystemClipboard": true,
+  "window.titleBarStyle": "native",
+  "window.zoomLevel": 0.0,
+  "workbench.colorTheme": "Catppuccin Mocha",
+  "workbench.editor.enablePreview": false,
+  "workbench.iconTheme": "catppuccin-mocha",
+  "workbench.sideBar.location": "right",
+  "zenMode.hideLineNumbers": false,
+  "zenMode.hideStatusBar": false,
+  "workbench.startupEditor": "none",
+  "keyboard.dispatch": "keyCode",
+  "snowflake.connectionsConfigFile": "/home/huen/.snowflake/connections.toml",
+  "autoDocstring.docstringFormat": "numpy",
+  "autoDocstring.includeExtendedSummary": true,
+  "redhat.telemetry.enabled": false,
+  "sqlfluff.dialect": "snowflake",
+  "sqlfluff.linter.run": "onSave",
+  "sqlfluff.executablePath": "sqlfluff",
+  "basedpyright.analysis.inlayHints.variableTypes": false,
+  "basedpyright.analysis.inlayHints.functionReturnTypes": false,
+  "basedpyright.analysis.inlayHints.callArgumentNames": false,
+  "basedpyright.analysis.typeCheckingMode": "all",
+  "notebook.lineNumbers": "on",
+  "csv.enabled": true,
+  "github.copilot.nextEditSuggestions.enabled": true,
+  "[dockercompose]": {
+    "editor.insertSpaces": true,
+    "editor.tabSize": 2,
+    "editor.autoIndent": "advanced",
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  },
+  "[github-actions-workflow]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  },
+  "editor.quickSuggestions": {
+    "other": true,
+    "comments": true,
+    "strings": true
+  },
+  "editor.suggestOnTriggerCharacters": true,
+  "editor.suggestSelection": "recentlyUsedByPrefix",
+  "ty.inlayHints.callArgumentNames": false,
+  "ty.inlayHints.variableTypes": false,
+  "extensions.ignoreRecommendations": true,
+  "window.menuBarVisibility": "hidden"
+}

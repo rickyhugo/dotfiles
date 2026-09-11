@@ -1,0 +1,99 @@
+[
+  {
+    "key": "ctrl+shift+`",
+    "command": "-workbench.action.terminal.new",
+    "when": "terminalProcessSupported || terminalWebExtensionContributedProfile"
+  },
+  {
+    "key": "ctrl+meta+enter",
+    "command": "terminal.focus"
+  },
+  {
+    "key": "unknown",
+    "command": "workbench.action.terminal.toggleTerminal",
+    "when": "terminal.active"
+  },
+  {
+    "key": "ctrl+`",
+    "command": "-workbench.action.terminal.toggleTerminal",
+    "when": "terminal.active"
+  },
+  {
+    "key": "ctrl+e ctrl+a",
+    "command": "notebook.cell.executeCellsAbove"
+  },
+  {
+    "key": "ctrl+e ctrl+b",
+    "command": "notebook.cell.executeCellAndBelow"
+  },
+  {
+    "key": "ctrl+e ctrl+n",
+    "command": "notebook.execute"
+  },
+  {
+    "key": "ctrl+e ctrl+x",
+    "command": "notebook.clearAllCellsOutputs"
+  },
+  {
+    "key": "alt+j",
+    "command": "notebook.cell.moveDown"
+  },
+  {
+    "key": "alt+k",
+    "command": "notebook.cell.moveUp"
+  },
+  {
+    "key": "ctrl+e ctrl+c",
+    "command": "jupyter.restartkernel"
+  },
+  {
+    "key": "shift+enter",
+    "command": "-python.execSelectionInTerminal",
+    "when": "editorTextFocus && !findInputFocussed && !jupyter.ownsSelection && !notebookEditorFocused && !replaceInputFocussed && editorLangId == 'python'"
+  },
+  {
+    "key": "tab",
+    "command": "selectNextSuggestion",
+    "when": "suggestWidgetMultipleSuggestions && suggestWidgetVisible && textInputFocus || suggestWidgetVisible && textInputFocus && !suggestWidgetHasFocusedSuggestion"
+  },
+  {
+    "key": "down",
+    "command": "-selectNextSuggestion",
+    "when": "suggestWidgetMultipleSuggestions && suggestWidgetVisible && textInputFocus || suggestWidgetVisible && textInputFocus && !suggestWidgetHasFocusedSuggestion"
+  },
+  {
+    "key": "shift+tab",
+    "command": "selectPrevSuggestion",
+    "when": "suggestWidgetMultipleSuggestions && suggestWidgetVisible && textInputFocus || suggestWidgetVisible && textInputFocus && !suggestWidgetHasFocusedSuggestion"
+  },
+  {
+    "key": "up",
+    "command": "-selectPrevSuggestion",
+    "when": "suggestWidgetMultipleSuggestions && suggestWidgetVisible && textInputFocus || suggestWidgetVisible && textInputFocus && !suggestWidgetHasFocusedSuggestion"
+  },
+  {
+    "key": "escape",
+    "command": "notebook.cell.quitEdit",
+    "when": "inputFocus && notebookEditorFocused && vim.active && !editorHasSelection && !editorHoverVisible && vim.mode == 'Normal'"
+  },
+  {
+    "key": "escape+escape",
+    "command": "notebook.cell.quitEdit",
+    "when": "notebookEditorFocused && notebookOutputFocused"
+  },
+  {
+    "key": "escape",
+    "command": "-notebook.cell.quitEdit",
+    "when": "notebookEditorFocused && notebookOutputFocused"
+  },
+  {
+    "key": "ctrl+y",
+    "command": "acceptSelectedSuggestion",
+    "when": "acceptSuggestionOnEnter && suggestWidgetHasFocusedSuggestion && suggestWidgetVisible && suggestionMakesTextEdit && textInputFocus"
+  },
+  {
+    "key": "enter",
+    "command": "-acceptSelectedSuggestion",
+    "when": "acceptSuggestionOnEnter && suggestWidgetHasFocusedSuggestion && suggestWidgetVisible && suggestionMakesTextEdit && textInputFocus"
+  }
+]
