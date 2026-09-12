@@ -64,7 +64,7 @@ branch = "main"
 "~/.config/lazygit" = { source = "~/.dotfiles/lazygit", mode = "symlink" }
 "~/.config/mako" = { mode = "track", variants = [{ os = "linux", profile = "personal" }] }
 "~/.config/mise/config.personal.toml" = { mode = "track", variants = [{ os = "linux", profile = "personal" }] }
-"~/.config/mise/config.toml" = { mode = "track" }
+"~/.config/mise/config.toml" = { source = "~/.dotfiles/mise/config.toml", mode = "symlink" }
 "~/.config/nvim" = { source = "~/.dotfiles/nvim", mode = "symlink" }
 "~/.config/obsidian/user-flags.conf" = { mode = "track", variants = [{ os = "linux", profile = "personal" }] }
 "~/.config/opencode" = { source = "~/.dotfiles/opencode", mode = "symlink" }
