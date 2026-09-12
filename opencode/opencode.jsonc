@@ -1,6 +1,6 @@
 {
-  "$schema": "https://opencode.ai/config.json",
-  "shell": "/bin/zsh",
-  "update": "notify",
-  "formatter": true,
+    "$schema": "https://opencode.ai/config.json",
+    "shell": "/bin/zsh",
+    "update": "notify",
+    "formatter": true,
 }
