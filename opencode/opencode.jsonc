@@ -1,1 +1,6 @@
-/home/huen/.dotfiles/opencode/opencode.jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "shell": "/bin/zsh",
+  "update": "notify",
+  "formatter": true,
+}
