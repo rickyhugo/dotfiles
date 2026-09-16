@@ -18,9 +18,6 @@ keymap("n", "<leader>y", '"+y', { desc = "Persist yanked buffer after yank + pas
 keymap("v", "<leader>y", '"+y', { desc = "Persist yanked buffer after yank + paste" })
 keymap("n", "<leader>Y", '"+Y', { desc = "Persist yanked buffer after yank + paste" })
 
-keymap("n", "Q", "<nop>", { desc = "Disable 'Q'" })
-keymap("n", "q", "<nop>", { desc = "Disable recording" })
-
 keymap(
 	"n",
 	"<leader>s",
@@ -31,11 +28,6 @@ keymap("v", "<C-s>", [["hy:%s/<C-r>h//g<left><left>]], { desc = "Substitute all 
 
 keymap("n", "<leader>w", ":w<CR>", { desc = "Write buffer" })
 keymap("n", "<leader>bd", "<cmd>bd<CR>", { desc = "Delete buffer" })
-
-keymap("n", "<M-h>", "<C-w>h", { desc = "Navigate to left pane" })
-keymap("n", "<M-j>", "<C-w>j", { desc = "Navigate to bottom pane" })
-keymap("n", "<M-k>", "<C-w>k", { desc = "Navigate to top pane" })
-keymap("n", "<M-l>", "<C-w>l", { desc = "Navigate to right pane" })
 
 keymap("n", "<C-h>", "10<C-w>>", { desc = "Resize buffer (left)" })
 keymap("n", "<C-j>", "10<C-w>+", { desc = "Resize buffer (bottom)" })
