@@ -15,9 +15,9 @@ return {
 		"gopls",
 
 		-- web
-		"biome",
+		"vtsls",
+		-- "biome",
 		"astro",
-		-- "vtsls",
 		"eslint",
 		"tailwindcss",
 		"svelte",
