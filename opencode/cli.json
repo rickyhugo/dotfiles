@@ -11,6 +11,7 @@
   "animations": false,
   "theme": { "name": "catppuccin", "mode": "system" },
   "tabs": {
-    "indicators": "numbers"
+    "indicators": "numbers",
+    "enabled": false
   }
 }
