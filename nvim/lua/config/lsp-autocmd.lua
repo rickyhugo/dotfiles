@@ -1,6 +1,6 @@
 require("config.lsp-config")
 
-vim.lsp.enable(require("config.tools").lsp)
+require("config.project-tools").setup_lsp(require("config.tools").lsp)
 
 vim.api.nvim_create_autocmd("LspAttach", {
 	group = vim.api.nvim_create_augroup("huen.lsp", {}),
