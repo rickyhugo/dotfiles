@@ -4,6 +4,32 @@ local web_formatters = { "biome-check", "prettierd", "prettier", "eslint_d" }
 local web_linters = { "eslint_d", "biomejs" }
 
 local M = {
+	-- Diagnostic support cannot be discovered reliably for push-based LSPs. Keep
+	-- this explicit; formatting support is read from each attached client.
+	lsp_roles = {
+		lua_ls = { diagnostics = true },
+		basedpyright = { diagnostics = true },
+		ty = { diagnostics = true },
+		ruff = { diagnostics = true },
+		rust_analyzer = { diagnostics = true },
+		gopls = { diagnostics = true },
+		vtsls = { diagnostics = true },
+		astro = { diagnostics = true },
+		eslint = { diagnostics = true },
+		tailwindcss = { diagnostics = false },
+		svelte = { diagnostics = true },
+		bashls = { diagnostics = true },
+		dockerls = { diagnostics = true },
+		docker_compose_language_service = { diagnostics = true },
+		zls = { diagnostics = true },
+		helm_ls = { diagnostics = true },
+		marksman = { diagnostics = true },
+		jsonls = { diagnostics = true },
+		taplo = { diagnostics = true },
+		yamlls = { diagnostics = true },
+		hyprls = { diagnostics = true },
+		["terraform-ls"] = { diagnostics = true },
+	},
 	formatters = {
 		python = { "ruff_fix", "ruff_format", "ruff_organize_imports", "black", "isort", "autopep8", "yapf" },
 		lua = { "stylua" },

@@ -1,5 +1,6 @@
 local M = {}
 local state_path = vim.fn.stdpath("state") .. "/project-tools.json"
+local global_key = "__global__"
 local state
 local wrapped = {}
 local generations = {}
@@ -11,33 +12,59 @@ local function read_state()
 	if vim.fn.filereadable(state_path) == 0 then
 		return {}
 	end
-	local decoded = vim.json.decode(table.concat(vim.fn.readfile(state_path), "\n"))
-	assert(type(decoded) == "table", "Invalid project-tools state")
+	local ok, decoded = pcall(vim.json.decode, table.concat(vim.fn.readfile(state_path), "\n"))
+	if not ok or type(decoded) ~= "table" then
+		vim.schedule(function()
+			vim.notify("Ignoring invalid project-tools state: " .. state_path, vim.log.levels.WARN)
+		end)
+		return {}
+	end
 	return decoded
 end
 
-function M.root(bufnr)
+local function realpath(path)
+	return vim.uv.fs_realpath(path) or vim.fs.normalize(path)
+end
+
+local function buffer_context(bufnr)
 	bufnr = bufnr or 0
 	local name = vim.api.nvim_buf_get_name(bufnr)
 	local dir = name ~= "" and vim.fs.dirname(name) or vim.fn.getcwd()
-	local root = vim.fs.root(dir, ".git") or dir
-	return vim.uv.fs_realpath(root) or vim.fs.normalize(root)
+	local project = vim.fs.root(dir, ".git")
+	return {
+		root = realpath(project or dir),
+		project = project and realpath(project) or nil,
+	}
 end
 
-local function overrides(root)
+function M.root(bufnr)
+	return buffer_context(bufnr).root
+end
+
+function M.project_root(bufnr)
+	return buffer_context(bufnr).project
+end
+
+local function overrides(key)
 	state = state or read_state()
-	return state[root] or {}
+	return (key and state[key]) or {}
 end
 
-local function save(root, value)
+local function clean(value)
 	for _, key in ipairs({ "lsp", "formatters", "linters" }) do
 		if value[key] and not next(value[key]) then
 			value[key] = nil
 		end
 	end
-	-- Merge other repositories' changes from concurrent Neovim instances.
+	return value
+end
+
+local function save(key, value)
+	assert(key, "project-tools state key is required")
+	value = clean(value)
+	-- Merge other scopes changed by concurrent Neovim instances.
 	local latest = read_state()
-	latest[root] = next(value) and value or nil
+	latest[key] = next(value) and value or nil
 	vim.fn.mkdir(vim.fs.dirname(state_path), "p")
 	local temporary = state_path .. "." .. vim.fn.getpid() .. ".tmp"
 	vim.fn.writefile({ vim.json.encode(latest) }, temporary)
@@ -45,12 +72,22 @@ local function save(root, value)
 	state = latest
 end
 
-function M.lsp_enabled(name, bufnr)
-	local value = (overrides(M.root(bufnr)).lsp or {})[name]
-	if value ~= nil then
-		return value
+local function value_source(bufnr, section, name, fallback)
+	local project = M.project_root(bufnr)
+	local project_values = project and (overrides(project)[section] or {}) or {}
+	if project_values[name] ~= nil then
+		return project_values[name], "project"
 	end
-	return lsp_defaults[name] == true
+	local global_values = overrides(global_key)[section] or {}
+	if global_values[name] ~= nil then
+		return global_values[name], "global"
+	end
+	return fallback, "default"
+end
+
+function M.lsp_enabled(name, bufnr)
+	local enabled = value_source(bufnr, "lsp", name, lsp_defaults[name] == true)
+	return enabled
 end
 
 local function enable_lsp(name)
@@ -89,8 +126,8 @@ function M.setup_lsp(names)
 		enable_lsp(name)
 	end
 	state = state or read_state()
-	for _, repo in pairs(state) do
-		for name, enabled in pairs(repo.lsp or {}) do
+	for _, scope in pairs(state) do
+		for name, enabled in pairs(scope.lsp or {}) do
 			if enabled then
 				enable_lsp(name)
 			end
@@ -115,17 +152,44 @@ function M.setup_lsp(names)
 	})
 end
 
+local function global_formatters(ft)
+	local configured = (overrides(global_key).formatters or {})[ft]
+	return vim.deepcopy(configured ~= nil and configured or formatter_defaults[ft] or {})
+end
+
 function M.formatters(bufnr)
 	local ft = vim.bo[bufnr].filetype
-	return vim.deepcopy((overrides(M.root(bufnr)).formatters or {})[ft] or formatter_defaults[ft] or {})
+	local project = M.project_root(bufnr)
+	local configured = project and (overrides(project).formatters or {})[ft] or nil
+	return vim.deepcopy(configured ~= nil and configured or global_formatters(ft))
+end
+
+local function default_format_policy(ft)
+	return ft == "rust" and "prefer" or "fallback"
+end
+
+local function normalize_policy(value, ft)
+	if value == false then
+		return "never"
+	end
+	if value == "never" or value == "prefer" or value == "fallback" then
+		return value
+	end
+	return default_format_policy(ft)
+end
+
+local function global_format_policy(ft)
+	return normalize_policy(overrides(global_key).lsp_format, ft)
 end
 
 function M.format_policy(bufnr)
-	local repo = overrides(M.root(bufnr))
-	if repo.lsp_format == false then
-		return "never"
+	local ft = vim.bo[bufnr].filetype
+	local project = M.project_root(bufnr)
+	local value
+	if project then
+		value = overrides(project).lsp_format
 	end
-	return vim.bo[bufnr].filetype == "rust" and "prefer" or "fallback"
+	return value ~= nil and normalize_policy(value, ft) or global_format_policy(ft)
 end
 
 function M.setup_formatters(defaults)
@@ -143,8 +207,24 @@ function M.setup_formatters(defaults)
 	return dynamic
 end
 
+local function global_autoformat()
+	return overrides(global_key).autoformat ~= false
+end
+
+function M.autoformat(bufnr)
+	local project = M.project_root(bufnr)
+	local value
+	if project then
+		value = overrides(project).autoformat
+	end
+	if value ~= nil then
+		return value
+	end
+	return global_autoformat()
+end
+
 function M.format_on_save(bufnr)
-	if overrides(M.root(bufnr)).autoformat == false then
+	if not M.autoformat(bufnr) then
 		return
 	end
 	return { timeout_ms = 500, lsp_format = M.format_policy(bufnr) }
@@ -152,6 +232,18 @@ end
 
 function M.setup_linters(defaults)
 	linter_defaults = defaults
+end
+
+local function union(...)
+	local result = {}
+	for _, list in ipairs({ ... }) do
+		for _, name in ipairs(list) do
+			if not vim.tbl_contains(result, name) then
+				result[#result + 1] = name
+			end
+		end
+	end
+	return result
 end
 
 local function default_linters(bufnr)
@@ -168,15 +260,23 @@ local function default_linters(bufnr)
 	return names
 end
 
+local function linter_candidates(bufnr)
+	local catalog = require("config.project-tool-catalog")
+	return catalog.filter("linters", union(default_linters(bufnr), catalog.for_ft("linters", vim.bo[bufnr].filetype)))
+end
+
+local function linter_enabled(name, bufnr)
+	return value_source(bufnr, "linters", name, vim.tbl_contains(default_linters(bufnr), name))
+end
+
 local function linters(bufnr)
-	local ft = vim.bo[bufnr].filetype
-	local names = default_linters(bufnr)
-	for _, name in ipairs(require("config.project-tool-catalog").for_ft("linters", ft)) do
-		if (overrides(M.root(bufnr)).linters or {})[name] == true and not vim.tbl_contains(names, name) then
-			names[#names + 1] = name
-		end
-	end
-	return names
+	return vim.tbl_filter(function(name)
+		return linter_enabled(name, bufnr)
+	end, linter_candidates(bufnr))
+end
+
+function M.linters(bufnr)
+	return vim.deepcopy(linters(bufnr))
 end
 
 function M.lint(bufnr)
@@ -185,10 +285,7 @@ function M.lint(bufnr)
 		return
 	end
 	local root = M.root(bufnr)
-	local disabled = overrides(root).linters or {}
-	local names = vim.tbl_filter(function(name)
-		return disabled[name] ~= false
-	end, linters(bufnr))
+	local names = linters(bufnr)
 	local generation = generations[root]
 	vim.api.nvim_buf_call(bufnr, function()
 		require("lint").try_lint(names, {
@@ -222,9 +319,18 @@ function M.lint(bufnr)
 end
 
 local function reconcile(root)
-	generations[root] = (generations[root] or 0) + 1
+	local touched = {}
 	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-		if vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].buftype == "" and M.root(bufnr) == root then
+		if
+			vim.api.nvim_buf_is_loaded(bufnr)
+			and vim.bo[bufnr].buftype == ""
+			and (not root or M.root(bufnr) == root)
+		then
+			local buffer_root = M.root(bufnr)
+			if not touched[buffer_root] then
+				generations[buffer_root] = (generations[buffer_root] or 0) + 1
+				touched[buffer_root] = true
+			end
 			for _, client in ipairs(vim.lsp.get_clients({ bufnr = bufnr })) do
 				if wrapped[client.name] and not M.lsp_enabled(client.name, bufnr) then
 					vim.lsp.buf_detach_client(bufnr, client.id)
@@ -233,9 +339,7 @@ local function reconcile(root)
 					end
 				end
 			end
-			local diagnostics = linters(bufnr)
-			vim.list_extend(diagnostics, require("config.project-tool-catalog").linters[vim.bo[bufnr].filetype] or {})
-			for _, name in ipairs(diagnostics) do
+			for _, name in ipairs(linter_candidates(bufnr)) do
 				vim.diagnostic.reset(require("lint").get_namespace(name), bufnr)
 			end
 			M.lint(bufnr)
@@ -248,22 +352,25 @@ local function reconcile(root)
 end
 
 function M.update(root, change)
-	local repo = vim.deepcopy(overrides(root))
-	change(repo)
-	save(root, repo)
+	local project = vim.deepcopy(overrides(root))
+	change(project)
+	save(root, project)
 	reconcile(root)
 end
 
-local function union(...)
-	local result = {}
-	for _, list in ipairs({ ... }) do
-		for _, name in ipairs(list) do
-			if not vim.tbl_contains(result, name) then
-				result[#result + 1] = name
-			end
-		end
+function M.update_global(change)
+	local global = vim.deepcopy(overrides(global_key))
+	change(global)
+	save(global_key, global)
+	reconcile()
+end
+
+local function update_scope(scope, root, change)
+	if scope == "global" then
+		M.update_global(change)
+	else
+		M.update(root, change)
 	end
-	return result
 end
 
 local function executable(command)
@@ -273,68 +380,165 @@ local function executable(command)
 	return vim.fn.executable(command) == 1
 end
 
+local function lsp_command(config)
+	local command = config.cmd
+	return type(command) == "table" and command[1] or command
+end
+
+local function source_label(source)
+	return source == "project" and "project override" or source == "global" and "global default" or "built-in default"
+end
+
+local function scope_source(scope, project_value, global_value)
+	if scope == "project" and project_value ~= nil then
+		return "project"
+	end
+	if global_value ~= nil then
+		return "global"
+	end
+	return "default"
+end
+
+local function set_nested(value, section, name, enabled, parent)
+	value[section] = value[section] or {}
+	value[section][name] = enabled
+	if enabled == parent then
+		value[section][name] = nil
+	end
+end
+
 -- Runtime state is kept separate from the UI: enabled does not mean running.
-function M.inspect(bufnr)
-	local root, ft = M.root(bufnr), vim.bo[bufnr].filetype
-	local repo = overrides(root)
+function M.inspect(bufnr, requested_scope)
+	local context = buffer_context(bufnr)
+	local root, project, ft = context.root, context.project, vim.bo[bufnr].filetype
+	local scope = (requested_scope == "global" or not project) and "global" or "project"
+	local project_state = project and overrides(project) or {}
+	local global_state = overrides(global_key)
 	local catalog = require("config.project-tool-catalog")
-	local view = { root = root, ft = ft, lsp = {}, formatters = {}, linters = {}, settings = {} }
-	local function add(kind, name, enabled, available, status, detail, change)
-		local item = {
-			name = name,
-			enabled = enabled,
-			available = available,
-			status = status,
-			detail = detail,
-			toggle = function()
-				M.update(root, change)
-			end,
-		}
+	local view = {
+		root = root,
+		project = project,
+		ft = ft,
+		scope = scope,
+		lsp = {},
+		formatters = {},
+		linters = {},
+		settings = {},
+	}
+	local function apply(change)
+		update_scope(scope, project, change)
+	end
+	local function add(kind, item)
 		view[kind][#view[kind] + 1] = item
 		return item
 	end
-	for _, setting in ipairs({ { "autoformat", "Autoformat on save" }, { "lsp_format", "LSP formatting" } }) do
-		local key, label = unpack(setting)
-		local enabled = repo[key] ~= false
-		add("settings", label, enabled, true, enabled and "on" or "off", nil, function(value)
-			value[key] = nil
-			if enabled then
-				value[key] = false
-			end
-		end)
+
+	local autoformat = M.autoformat(bufnr)
+	local autoformat_parent = true
+	if scope == "project" then
+		autoformat_parent = global_autoformat()
 	end
-	view.autoformat = repo.autoformat ~= false
-	view.lsp_format = M.format_policy(bufnr)
-	view.reset = function()
-		save(root, {})
-		reconcile(root)
-	end
+	local autoformat_source = scope_source(scope, project_state.autoformat, global_state.autoformat)
+	add("settings", {
+		name = "Autoformat on save",
+		enabled = autoformat,
+		available = true,
+		status = autoformat and "on" or "off",
+		detail = source_label(autoformat_source),
+		source = autoformat_source,
+		toggle = function()
+			apply(function(value)
+				local enabled = not autoformat
+				value.autoformat = enabled
+				if enabled == autoformat_parent then
+					value.autoformat = nil
+				end
+			end)
+		end,
+	})
+
+	local policy = M.format_policy(bufnr)
+	local policy_parent = scope == "project" and global_format_policy(ft) or default_format_policy(ft)
+	local policy_source = scope_source(scope, project_state.lsp_format, global_state.lsp_format)
+	local next_policy = ({ fallback = "prefer", prefer = "never", never = "fallback" })[policy]
+	add("settings", {
+		name = "LSP formatting",
+		enabled = policy ~= "never",
+		available = true,
+		status = policy,
+		detail = (policy == "fallback" and "external first" or policy == "prefer" and "LSP first" or "disabled")
+			.. " · "
+			.. source_label(policy_source),
+		source = policy_source,
+		toggle = function()
+			apply(function(value)
+				value.lsp_format = next_policy
+				if next_policy == policy_parent then
+					value.lsp_format = nil
+				end
+			end)
+		end,
+	})
+	view.autoformat = autoformat
+	view.lsp_format = policy
+
 	local attached = {}
 	for _, client in ipairs(vim.lsp.get_clients({ bufnr = bufnr })) do
-		attached[client.name] = true
+		attached[client.name] = client
 	end
 	for _, name in ipairs(require("config.tools").lsp) do
 		local config = vim.lsp.config[name]
 		if config and ((config.filetypes and vim.tbl_contains(config.filetypes, ft)) or attached[name]) then
-			local enabled = M.lsp_enabled(name, bufnr)
-			local available = executable(type(config.cmd) == "table" and config.cmd[1] or nil)
-			local status = attached[name] and "running"
+			local enabled = value_source(bufnr, "lsp", name, lsp_defaults[name] == true)
+			local parent = lsp_defaults[name] == true
+			if scope == "project" and (global_state.lsp or {})[name] ~= nil then
+				parent = global_state.lsp[name]
+			end
+			local source = scope_source(scope, (project_state.lsp or {})[name], (global_state.lsp or {})[name])
+			local available = executable(lsp_command(config))
+			local client = attached[name]
+			local formatting = client
+					and client:supports_method(vim.lsp.protocol.Methods.textDocument_formatting, bufnr)
+				or false
+			local diagnostics = client and (catalog.lsp_roles[name] or {}).diagnostics == true or false
+			local capabilities = {}
+			if formatting then
+				capabilities[#capabilities + 1] = "formatting"
+			end
+			if diagnostics then
+				capabilities[#capabilities + 1] = "diagnostics"
+			end
+			local status = client and "running"
 				or (available == false and "missing executable")
 				or (enabled and "enabled · not attached")
 				or (available and "available" or "availability unknown")
-			local item = add("lsp", name, enabled, available, status, nil, function(value)
-				value.lsp = value.lsp or {}
-				local new = not enabled
-				value.lsp[name] = new
-				if new == (lsp_defaults[name] == true) then
-					value.lsp[name] = nil
-				end
-				enable_lsp(name)
-			end)
-			item.running = attached[name] == true
+			add("lsp", {
+				name = name,
+				enabled = enabled,
+				available = available,
+				status = status,
+				detail = (#capabilities > 0 and table.concat(capabilities, " + ") .. " · " or "")
+					.. source_label(source),
+				source = source,
+				running = client ~= nil,
+				formatting = formatting,
+				diagnostics = diagnostics,
+				toggle = function()
+					apply(function(value)
+						set_nested(value, "lsp", name, not enabled, parent)
+						enable_lsp(name)
+					end)
+				end,
+			})
 		end
 	end
+
 	local selected = M.formatters(bufnr)
+	local global_selected = global_formatters(ft)
+	local parent_formatters = scope == "project" and global_selected or formatter_defaults[ft] or {}
+	local project_formatters = (project_state.formatters or {})[ft]
+	local global_formatters_override = (global_state.formatters or {})[ft]
+	local formatter_source = scope_source(scope, project_formatters, global_formatters_override)
 	local conform = require("conform")
 	local to_run, uses_lsp = conform.list_formatters_to_run(bufnr)
 	view.uses_lsp = uses_lsp
@@ -342,12 +546,14 @@ function M.inspect(bufnr)
 	for _, info in ipairs(to_run) do
 		scheduled[info.name] = true
 	end
-	local candidates =
-		catalog.filter("formatters", union(selected, formatter_defaults[ft] or {}, catalog.for_ft("formatters", ft)))
+	local candidates = catalog.filter(
+		"formatters",
+		union(selected, global_selected, formatter_defaults[ft] or {}, catalog.for_ft("formatters", ft))
+	)
 	local function set_formatters(value, names)
 		value.formatters = value.formatters or {}
 		value.formatters[ft] = names
-		if vim.deep_equal(names, formatter_defaults[ft] or {}) then
+		if vim.deep_equal(names, parent_formatters) then
 			value.formatters[ft] = nil
 		end
 	end
@@ -357,34 +563,65 @@ function M.inspect(bufnr)
 		local status = not info.available and "unavailable"
 			or (index >= 0 and (scheduled[name] and "ready" or "skipped · LSP preferred"))
 			or "available"
-		local item = add("formatters", name, index >= 0, info.available, status, info.available_msg, function(value)
-			local names = vim.deepcopy(selected)
-			if index >= 0 then
-				table.remove(names, index + 1)
-			else
-				local defaults = formatter_defaults[ft] or {}
-				local position = #names + 1
-				local default_index = vim.fn.index(defaults, name)
-				if default_index >= 0 then
-					for i, active in ipairs(names) do
-						if vim.fn.index(defaults, active) > default_index then
-							position = i
-							break
+		local item = add("formatters", {
+			name = name,
+			enabled = index >= 0,
+			available = info.available,
+			status = status,
+			detail = (index >= 0 and ("step " .. index + 1 .. " · ") or "")
+				.. source_label(formatter_source)
+				.. (info.available_msg and (" · " .. info.available_msg) or ""),
+			source = formatter_source,
+			step = index >= 0 and index + 1 or nil,
+			toggle = function()
+				apply(function(value)
+					local names = vim.deepcopy(selected)
+					if index >= 0 then
+						table.remove(names, index + 1)
+					else
+						local position = #names + 1
+						local parent_index = vim.fn.index(parent_formatters, name)
+						if parent_index >= 0 then
+							for active_index, active in ipairs(names) do
+								local active_parent_index = vim.fn.index(parent_formatters, active)
+								if active_parent_index > parent_index then
+									position = active_index
+									break
+								end
+							end
 						end
+						table.insert(names, position, name)
 					end
+					set_formatters(value, names)
+				end)
+			end,
+		})
+		if index >= 0 then
+			item.move = function(offset)
+				local target = index + 1 + offset
+				if target < 1 or target > #selected then
+					return
 				end
-				table.insert(names, position, name)
+				apply(function(value)
+					local names = vim.deepcopy(selected)
+					local formatter = table.remove(names, index + 1)
+					table.insert(names, target, formatter)
+					set_formatters(value, names)
+				end)
 			end
-			set_formatters(value, names)
-		end)
-		item.step = index >= 0 and index + 1 or nil
+		end
 	end
-	local configured = linters(bufnr)
+
 	local lint = require("lint")
 	local running = lint.get_running(bufnr)
-	for _, name in ipairs(catalog.filter("linters", union(configured, catalog.for_ft("linters", ft)))) do
+	for _, name in ipairs(linter_candidates(bufnr)) do
+		local enabled = linter_enabled(name, bufnr)
 		local default = vim.tbl_contains(default_linters(bufnr), name)
-		local enabled = vim.tbl_contains(configured, name) and (repo.linters or {})[name] ~= false
+		local parent = default
+		if scope == "project" and (global_state.linters or {})[name] ~= nil then
+			parent = global_state.linters[name]
+		end
+		local source = scope_source(scope, (project_state.linters or {})[name], (global_state.linters or {})[name])
 		local ok, command = pcall(function()
 			return vim.api.nvim_buf_call(bufnr, function()
 				local linter = lint.linters[name]
@@ -396,21 +633,104 @@ function M.inspect(bufnr)
 		local status = vim.tbl_contains(running, name) and "running"
 			or (not available and "missing executable")
 			or (enabled and "ready · on read/save" or "available")
-		add("linters", name, enabled, available, status, nil, function(value)
-			value.linters = value.linters or {}
-			value.linters[name] = not enabled
-			if (not enabled) == default then
-				value.linters[name] = nil
-			end
-		end)
+		add("linters", {
+			name = name,
+			enabled = enabled,
+			available = available,
+			status = status,
+			detail = source_label(source),
+			source = source,
+			toggle = function()
+				apply(function(value)
+					set_nested(value, "linters", name, not enabled, parent)
+				end)
+			end,
+		})
+	end
+
+	local running_lsps, lsp_formatters, lsp_diagnostics, external_formatters, external_linters = {}, {}, {}, {}, {}
+	for _, item in ipairs(view.lsp) do
+		if item.running then
+			running_lsps[#running_lsps + 1] = item.name
+		end
+		if item.running and item.formatting then
+			lsp_formatters[#lsp_formatters + 1] = item.name
+		end
+		if item.running and item.diagnostics then
+			lsp_diagnostics[#lsp_diagnostics + 1] = item.name
+		end
+	end
+	for _, item in ipairs(view.formatters) do
+		if item.enabled and item.available then
+			external_formatters[#external_formatters + 1] = item.name
+		end
+	end
+	for _, item in ipairs(view.linters) do
+		if item.name ~= "typos" and item.enabled and item.available then
+			external_linters[#external_linters + 1] = item.name
+		end
+	end
+	local format_lsp = #lsp_formatters > 0
+	local diagnostics_lsp = #lsp_diagnostics > 0
+	local headline, advice, level
+	if #view.lsp == 0 then
+		headline = "No LSP configured for this filetype"
+		level = #external_formatters > 0 and #external_linters > 0 and "ok" or "warn"
+		advice = (#external_formatters > 0 and "formatter ready" or "formatter needed")
+			.. " · "
+			.. (#external_linters > 0 and "linter ready" or "linter needed")
+	elseif #running_lsps == 0 then
+		headline = "No LSP attached to this buffer"
+		level = "warn"
+		advice = "Check enabled servers; external tools remain independent"
+	elseif format_lsp and diagnostics_lsp then
+		headline = "LSP covers formatting + diagnostics"
+		level = "ok"
+		if policy == "never" then
+			advice = "LSP is sufficient; formatting is currently disabled"
+		elseif #external_formatters > 0 or #external_linters > 0 then
+			advice = "External tools are optional project-specific extras"
+		else
+			advice = "You can rely on the LSP for both"
+		end
+	elseif diagnostics_lsp then
+		headline = "LSP covers diagnostics, not formatting"
+		level = #external_formatters > 0 and "ok" or "warn"
+		advice = #external_formatters > 0 and "Keep the formatter enabled" or "Enable an available formatter"
+	elseif format_lsp then
+		headline = "LSP covers formatting, not diagnostics"
+		level = #external_linters > 0 and "ok" or "warn"
+		advice = #external_linters > 0 and "Keep the linter enabled" or "Enable an available linter"
+	else
+		headline = "LSP does not cover formatting or diagnostics"
+		level = #external_formatters > 0 and #external_linters > 0 and "ok" or "warn"
+		advice = (#external_formatters > 0 and "formatter ready" or "formatter needed")
+			.. " · "
+			.. (#external_linters > 0 and "linter ready" or "linter needed")
+	end
+	view.coverage = {
+		headline = headline,
+		advice = advice,
+		level = level,
+		formatters = lsp_formatters,
+		diagnostics = lsp_diagnostics,
+	}
+	view.reset = function()
+		if scope == "global" then
+			save(global_key, {})
+			reconcile()
+		else
+			save(project, {})
+			reconcile(project)
+		end
 	end
 	return view
 end
 
-function M.pick(bufnr, section, show_missing)
+function M.pick(bufnr, scope, show_missing)
 	bufnr = bufnr or vim.api.nvim_get_current_buf()
 	if vim.api.nvim_buf_is_valid(bufnr) then
-		require("config.project-tools-picker").open(bufnr, section, show_missing)
+		require("config.project-tools-picker").open(bufnr, scope, show_missing)
 	end
 end
 

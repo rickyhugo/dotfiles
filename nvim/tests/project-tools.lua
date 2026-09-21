@@ -16,6 +16,7 @@ local configured_tools = vim.deepcopy(require("config.tools"))
 configured_tools.lsp[#configured_tools.lsp + 1] = "project_test"
 configured_tools.lint[#configured_tools.lint + 1] = "trim_whitespace"
 package.loaded["config.tools"] = configured_tools
+require("config.project-tool-catalog").lsp_roles.project_test = { diagnostics = true }
 
 local function check(value, message)
 	assert(value, message)
@@ -45,7 +46,7 @@ while True:
     if msg.get('method') == 'exit':
         break
     if 'id' in msg:
-        result = {'capabilities': {'textDocumentSync': 1}} if msg.get('method') == 'initialize' else None
+        result = {'capabilities': {'textDocumentSync': 1, 'documentFormattingProvider': True}} if msg.get('method') == 'initialize' else None
         body = json.dumps({'jsonrpc': '2.0', 'id': msg['id'], 'result': result}).encode()
         sys.stdout.buffer.write(f'Content-Length: {len(body)}\r\n\r\n'.encode() + body)
         sys.stdout.buffer.flush()
@@ -135,8 +136,8 @@ while True:
 				picker_items, choose = items, callback
 			end,
 		} }
-	local function pick(text, section)
-		tools.pick(a, section, true)
+	local function pick(text, scope)
+		tools.pick(a, scope, true)
 		for _, item in ipairs(picker_items) do
 			if item.text:find(text, 1, true) then
 				choose(item)
@@ -146,21 +147,38 @@ while True:
 		error("Missing picker item: " .. text)
 	end
 	tools.pick(a)
-	check(#picker_items == 4, "overview must be limited to four categories")
-	check(picker_items[1].text:find("Language servers", 1, true), "overview must start with LSP status")
-	pick("Autoformat on save", "settings")
+	check(#picker_items > 6, "dashboard must show settings and tools together")
+	check(picker_items[1].text:find("Coverage", 1, true), "dashboard must start with the coverage verdict")
+	pick("Autoformat on save")
 	check(tools.format_on_save(a) ~= nil, "autoformat toggle must re-enable")
-	pick("LSP formatting", "settings")
+	pick("LSP formatting")
 	check(tools.format_policy(a) == "fallback", "LSP formatting toggle must re-enable")
-	pick("luacheck", "linters")
+	pick("luacheck")
 	check(vim.tbl_contains(captured[a].names, "luacheck"), "linter toggle must re-enable")
-	pick("trim_whitespace", "formatters")
-	pick("stylua", "formatters")
+	pick("trim_whitespace")
+	pick("stylua")
 	check(vim.deep_equal(tools.formatters(a), { "stylua", "trim_whitespace" }), "restore default pipeline order")
-	pick("project_test", "lsp")
+	local formatter_items = tools.inspect(a).formatters
+	for _, item in ipairs(formatter_items) do
+		if item.name == "trim_whitespace" then
+			item.move(-1)
+		end
+	end
+	check(vim.deep_equal(tools.formatters(a), { "trim_whitespace", "stylua" }), "formatter steps must be reorderable")
+	for _, item in ipairs(tools.inspect(a).formatters) do
+		if item.name == "stylua" then
+			item.move(-1)
+		end
+	end
+	check(vim.deep_equal(tools.formatters(a), { "stylua", "trim_whitespace" }), "restoring order must inherit defaults")
+	pick("project_test")
 	wait_for(function()
 		return #vim.lsp.get_clients({ bufnr = a }) == 1
 	end, "LSP toggle must reattach")
+	check(
+		tools.inspect(a).coverage.headline == "LSP covers formatting + diagnostics",
+		"coverage must explain LSP sufficiency"
+	)
 	check(vim.lsp.get_clients({ bufnr = b })[1].id == client_b, "re-enable must preserve other repo")
 
 	local state_file = vim.fn.stdpath("state") .. "/project-tools.json"
@@ -168,11 +186,32 @@ while True:
 	check(saved[root_a].linters.typos == false, "overrides must persist")
 	saved[root_b] = { autoformat = false }
 	vim.fn.writefile({ vim.json.encode(saved) }, state_file)
-	pick("Reset repository to defaults", "settings")
+	pick("Clear project overrides")
 	saved = vim.json.decode(table.concat(vim.fn.readfile(state_file), "\n"))
 	check(saved[root_a] == nil, "reset removes overrides")
 	check(saved[root_b].autoformat == false, "writes must preserve other instance's repo state")
 	check(tools.format_on_save(a) ~= nil, "reset restores defaults")
+
+	-- Global defaults apply everywhere and project values only override them.
+	tools.inspect(a, "global").settings[1].toggle()
+	check(tools.format_on_save(a) == nil, "global autoformat default must affect the current project")
+	check(tools.format_on_save(b) == nil, "global autoformat default must affect other projects")
+	local project_autoformat = tools.inspect(a).settings[1]
+	check(project_autoformat.source == "global", "project dashboard must identify inherited global values")
+	project_autoformat.toggle()
+	check(tools.format_on_save(a) ~= nil, "project setting must override the global default")
+	check(tools.format_on_save(b) == nil, "project override must not leak to another repository")
+	tools.inspect(a).reset()
+	check(tools.format_on_save(a) == nil, "clearing project settings must restore global inheritance")
+	tools.inspect(a, "global").reset()
+	check(tools.format_on_save(a) ~= nil, "resetting global settings must restore built-in defaults")
+	check(tools.format_on_save(b) == nil, "global reset must preserve repository overrides")
+	local outside_dir = directory .. "/outside"
+	vim.fn.mkdir(outside_dir, "p")
+	local outside = vim.fn.bufadd(outside_dir .. "/test.lua")
+	vim.fn.bufload(outside)
+	vim.bo[outside].filetype = "lua"
+	check(tools.inspect(outside).scope == "global", "files outside Git must edit global defaults")
 
 	-- Python alternatives are filetype-specific, and availability is not selection.
 	local python = buffer("python")
@@ -213,7 +252,7 @@ while True:
 		ruff.enabled and not ruff.available and ruff.status == "unavailable",
 		"selected missing formatter must not say ready"
 	)
-	tools.pick(python, "formatters")
+	tools.pick(python)
 	local text = vim.iter(picker_items)
 		:map(function(item)
 			return item.text
@@ -246,20 +285,25 @@ while True:
 	tools.pick(python)
 	wait_for(function()
 		return #snacks.picker.get() == 1
-	end, "real overview picker must open")
+	end, "real dashboard picker must open")
 	local picker = snacks.picker.get()[1]
 	wait_for(function()
-		return picker:count() == 4
-	end, "real overview must render four rows")
-	picker:close()
-	tools.pick(python, "formatters")
+		return picker:count() > 6
+	end, "real dashboard must render all tool categories")
+	picker.input:set("Autoformat")
+	picker:find()
 	wait_for(function()
-		return #snacks.picker.get() == 1
-	end, "real formatter picker must open")
-	picker = snacks.picker.get()[1]
+		return picker.list:count() == 1
+	end, "dashboard filtering must find settings")
+	local autoformat_before = tools.autoformat(python)
+	picker:action("confirm")
 	wait_for(function()
-		return picker:count() > 2
-	end, "real formatter rows must render")
+		return tools.autoformat(python) ~= autoformat_before and not picker.closed and picker.list:count() == 1
+	end, "toggle must refresh the dashboard in place")
+	picker:action("confirm")
+	wait_for(function()
+		return tools.autoformat(python) == autoformat_before
+	end, "second toggle must restore the inherited value")
 	picker:close()
 	package.loaded["config.project-tools"] = nil
 	check(require("config.project-tools").format_on_save(b) == nil, "fresh module must load persisted state")

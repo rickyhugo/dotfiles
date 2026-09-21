@@ -1,9 +1,14 @@
 local M = {}
-local labels = { lsp = "Language servers", formatters = "Formatters", linters = "Linters", settings = "Settings" }
 
-local function row(name, status, highlight, action, icon, detail)
+local function row(kind, name, status, highlight, action, icon, detail)
 	return {
-		text = name .. "  " .. status .. (detail and ("  " .. detail) or ""),
+		text = table.concat(
+			vim.tbl_filter(function(value)
+				return value and value ~= ""
+			end, { kind, name, status, detail }),
+			"  "
+		),
+		kind = kind,
 		name = name,
 		status = status,
 		highlight = highlight,
@@ -14,7 +19,16 @@ local function row(name, status, highlight, action, icon, detail)
 end
 
 local function select(items, title, hint)
-	require("snacks").picker.select(items, {
+	local function move(offset)
+		return function(picker, finder_item)
+			local item = finder_item and finder_item.item
+			if not item or not item.move_action then
+				return
+			end
+			item.move_action(offset)
+		end
+	end
+	return require("snacks").picker.select(items, {
 		prompt = title,
 		format_item = function(item, chunks)
 			if not chunks then
@@ -22,14 +36,40 @@ local function select(items, title, hint)
 			end
 			return {
 				{ item.icon .. "  ", item.highlight },
-				{ string.format("%-24s", item.name), "Title" },
+				{ string.format("%-9s", item.kind), "Comment" },
+				{ string.format("%-25s", item.name), "Title" },
 				{ "  " .. item.status, item.highlight },
 				{ item.detail and ("  · " .. item.detail) or "", "Comment" },
 			}
 		end,
 		snacks = {
-			layout = { preset = "select", layout = { width = 0.85, max_width = 140, border = "rounded" } },
-			win = { input = { footer = hint, footer_pos = "center" } },
+			layout = { preset = "select", layout = { width = 0.9, max_width = 160, border = "rounded" } },
+			actions = {
+				confirm = function(_, finder_item)
+					local item = finder_item and finder_item.item
+					if item and item.action then
+						item.action()
+					end
+				end,
+				project_tools_up = move(-1),
+				project_tools_down = move(1),
+			},
+			win = {
+				input = {
+					footer = hint,
+					footer_pos = "center",
+					keys = {
+						["<M-k>"] = { "project_tools_up", mode = { "n", "i" } },
+						["<M-j>"] = { "project_tools_down", mode = { "n", "i" } },
+					},
+				},
+				list = {
+					keys = {
+						["<M-k>"] = "project_tools_up",
+						["<M-j>"] = "project_tools_down",
+					},
+				},
+			},
 		},
 	}, function(item)
 		if item and item.action then
@@ -38,113 +78,139 @@ local function select(items, title, hint)
 	end)
 end
 
-local function summary(items, kind)
-	local active, available, missing = {}, 0, 0
-	for _, item in ipairs(items) do
-		if item.enabled or item.running then
-			local suffix = ""
-			if item.available == false then
-				suffix = " (unavailable)"
-				missing = missing + 1
-			elseif kind == "lsp" and not item.running then
-				suffix = " (not attached)"
-			end
-			active[#active + 1] = item.name .. suffix
-		elseif item.available then
-			available = available + 1
+local function tool_row(kind, item, refresh)
+	local active = item.enabled or item.running
+	local highlight = item.available == false and "DiagnosticWarn" or (active and "DiagnosticOk" or "Comment")
+	local result = row(kind, item.name, item.status, highlight, function()
+		item.toggle()
+		refresh()
+	end, item.enabled and "●" or "○", item.detail)
+	if item.move then
+		result.move_action = function(offset)
+			item.move(offset)
+			refresh()
 		end
 	end
-	local text = #active > 0 and table.concat(active, kind == "formatters" and " → " or ", ") or "none enabled"
-	return text, available, missing
+	return result
 end
 
-function M.open(bufnr, section, show_missing)
+function M.open(bufnr, scope, show_missing)
 	local tools = require("config.project-tools")
-	local view = tools.inspect(bufnr)
-	local title = vim.fs.basename(view.root) .. "  /  " .. (view.ft ~= "" and view.ft or "no filetype")
-	local function open(next_section, missing)
-		tools.pick(bufnr, next_section, missing)
-	end
+	local current_scope, current_show_missing = scope, show_missing
 	local items = {}
-	if not section then
-		for _, kind in ipairs({ "lsp", "formatters", "linters" }) do
-			local text, available, missing = summary(view[kind], kind)
-			local detail = available .. " available"
-			if kind == "formatters" then
-				if view.uses_lsp then
-					text = "LSP formatting" .. (view.lsp_format == "prefer" and " (preferred)" or " (fallback)")
-				end
-				detail = (view.autoformat and "on save" or "manual only") .. " · " .. detail
-			elseif kind == "lsp" then
-				detail = "attached to this buffer · " .. detail
-			else
-				detail = "on read/save · " .. detail
-			end
-			items[#items + 1] = row(labels[kind], text, missing > 0 and "DiagnosticWarn" or "DiagnosticOk", function()
-				open(kind)
-			end, "›", detail)
+	local picker
+	local build
+	local function refresh(next_scope, missing)
+		if next_scope ~= nil then
+			current_scope = next_scope
 		end
-		items[#items + 1] = row("Settings", "Autoformat " .. (view.autoformat and "on" or "off"), "Comment", function()
-			open("settings")
-		end, "›", "LSP formatting " .. view.lsp_format .. " · reset defaults")
-		select(items, "Project tools · " .. title, " Enter: manage category  ·  Esc: close ")
-		return
+		if missing ~= nil then
+			current_show_missing = missing
+		end
+		if picker and not picker.closed then
+			build()
+			picker:find({ refresh = true })
+		else
+			-- Also keeps the picker easy to exercise through a minimal vim.ui.select mock.
+			tools.pick(bufnr, current_scope, current_show_missing)
+		end
 	end
 
-	local candidates = vim.deepcopy(view[section])
-	if section ~= "settings" then
-		table.sort(candidates, function(a, b)
-			local function rank(item)
-				return (item.enabled or item.running) and 0 or (item.available and 1 or 2)
-			end
-			if rank(a) ~= rank(b) then
-				return rank(a) < rank(b)
-			end
-			if a.step and b.step then
-				return a.step < b.step
-			end
-			return a.name < b.name
-		end)
-	end
-	local hidden = 0
-	for _, item in ipairs(candidates) do
-		if item.enabled or item.running or item.available or show_missing or section == "settings" then
-			local highlight = item.available == false and "DiagnosticWarn"
-				or ((item.enabled or item.running) and "DiagnosticOk" or "Comment")
-			local status = item.status
-			if item.step then
-				status = "step " .. item.step .. " · " .. status
-			end
-			items[#items + 1] = row(item.name, status, highlight, function()
-				item.toggle()
-				open(section, show_missing)
-			end, item.enabled and "●" or "○", item.detail)
-		else
-			hidden = hidden + 1
+	build = function()
+		for index = #items, 1, -1 do
+			table.remove(items, index)
 		end
-	end
-	if hidden > 0 or show_missing then
+		local view = tools.inspect(bufnr, current_scope)
+		current_scope = view.scope
+		local project_name = view.project and vim.fs.basename(view.project) or "outside Git"
+		local coverage = view.coverage
 		items[#items + 1] = row(
-			show_missing and "Hide unavailable tools" or "Show unavailable tools",
-			hidden > 0 and tostring(hidden) or "",
+			"HEALTH",
+			"Coverage",
+			coverage.headline,
+			coverage.level == "ok" and "DiagnosticOk" or "DiagnosticWarn",
+			nil,
+			coverage.level == "ok" and "✓" or "!",
+			coverage.advice
+		)
+		if view.project then
+			local next_scope = view.scope == "project" and "global" or "project"
+			items[#items + 1] = row(
+				"SCOPE",
+				"Editing",
+				view.scope == "project" and ("project · " .. project_name) or "global defaults",
+				"DiagnosticInfo",
+				function()
+					refresh(next_scope)
+				end,
+				"↔",
+				"Enter: edit " .. next_scope
+			)
+		else
+			items[#items + 1] = row(
+				"SCOPE",
+				"Editing",
+				"global defaults",
+				"DiagnosticInfo",
+				nil,
+				"·",
+				"files outside Git inherit global settings"
+			)
+		end
+
+		for _, item in ipairs(view.settings) do
+			items[#items + 1] = tool_row("SETTING", item, refresh)
+		end
+
+		local hidden = 0
+		for _, group in ipairs({
+			{ "LSP", view.lsp },
+			{ "FORMAT", view.formatters },
+			{ "LINT", view.linters },
+		}) do
+			local kind, candidates = unpack(group)
+			for _, item in ipairs(candidates) do
+				if item.enabled or item.running or item.available or current_show_missing then
+					items[#items + 1] = tool_row(kind, item, refresh)
+				else
+					hidden = hidden + 1
+				end
+			end
+		end
+
+		if hidden > 0 or current_show_missing then
+			items[#items + 1] = row(
+				"VIEW",
+				current_show_missing and "Hide unavailable tools" or "Show unavailable tools",
+				hidden > 0 and tostring(hidden) .. " hidden" or "all shown",
+				"Comment",
+				function()
+					refresh(nil, not current_show_missing)
+				end,
+				"…"
+			)
+		end
+
+		items[#items + 1] = row(
+			"RESET",
+			view.scope == "project" and "Clear project overrides" or "Reset global defaults",
+			"inherit defaults",
 			"Comment",
 			function()
-				open(section, not show_missing)
-			end
+				view.reset()
+				refresh()
+			end,
+			"↺"
 		)
+		return project_name, view.ft
 	end
-	if section == "settings" then
-		items[#items + 1] = row("Reset repository to defaults", "", "Comment", function()
-			view.reset()
-			open()
-		end)
-	end
-	items[#items + 1] = row("Back to overview", "", "Comment", function()
-		open()
-	end, "←")
-	local hint = section == "linters" and " Standalone linters; LSPs may also publish diagnostics.  Enter: toggle "
-		or " ● enabled  ○ disabled  ·  Enter: toggle  ·  Esc: close "
-	select(items, labels[section] .. " · " .. title, hint)
+
+	local project_name, ft = build()
+	picker = select(
+		items,
+		"Project tools · " .. project_name .. " / " .. (ft ~= "" and ft or "no filetype"),
+		" Enter: toggle/action  ·  Alt-j/k: reorder formatter  ·  /: filter  ·  Esc: close "
+	)
 end
 
 return M
