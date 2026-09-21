@@ -1,8 +1,8 @@
 local icons = require("config.icons")
 local tools = require("config.tools")
 
-local gh = function(x)
-	return "https://github.com/" .. x
+local gh = function(repo)
+	return "https://github.com/" .. repo
 end
 
 -- INFO: vim.pack hooks
