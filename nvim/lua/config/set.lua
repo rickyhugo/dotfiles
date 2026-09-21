@@ -54,8 +54,6 @@ vim.opt.updatetime = 50
 
 vim.g.mapleader = " "
 
-vim.g.python3_host_prog = "/usr/bin/python"
-
 vim.g.loaded_perl_provider = 0
 
 vim.g.loaded_netrw = 1
@@ -73,6 +71,12 @@ vim.opt.winborder = "rounded"
 
 -- Prepend mise shims to PATH
 vim.env.PATH = vim.env.HOME .. "/.local/share/mise/shims:" .. vim.env.PATH
+
+-- Resolve Python from PATH on both macOS and Linux, including mise shims.
+local python3 = vim.fn.exepath("python3")
+if python3 ~= "" then
+	vim.g.python3_host_prog = python3
+end
 
 vim.api.nvim_create_user_command("VimPackUpdate", function()
 	vim.pack.update()
