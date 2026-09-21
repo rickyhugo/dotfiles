@@ -4,7 +4,7 @@ return {
 		"lua_ls",
 
 		-- python
-		-- "basedpyright",
+		"basedpyright",
 		"ty",
 		"ruff",
 
@@ -15,8 +15,8 @@ return {
 		"gopls",
 
 		-- web
-		-- "biome",
-		-- "astro",
+		"biome",
+		"astro",
 		-- "vtsls",
 		"eslint",
 		"tailwindcss",

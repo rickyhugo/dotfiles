@@ -1,5 +1,5 @@
 -- Run with: nvim --clean --headless -l nvim/tests/project-tools.lua
--- Uses installed Conform/nvim-lint, isolated state, and a tiny real LSP server.
+-- Uses installed Conform/nvim-lint/Snacks, isolated state, and a tiny real LSP server.
 local directory = vim.fn.tempname()
 vim.fn.mkdir(directory, "p")
 directory = vim.uv.fs_realpath(directory)
@@ -11,6 +11,11 @@ end
 vim.opt.rtp:prepend(vim.fn.getcwd() .. "/nvim")
 vim.opt.rtp:append(data .. "/site/pack/core/opt/conform.nvim")
 vim.opt.rtp:append(data .. "/site/pack/core/opt/nvim-lint")
+vim.opt.rtp:append(data .. "/site/pack/core/opt/snacks.nvim")
+local configured_tools = vim.deepcopy(require("config.tools"))
+configured_tools.lsp[#configured_tools.lsp + 1] = "project_test"
+configured_tools.lint[#configured_tools.lint + 1] = "trim_whitespace"
+package.loaded["config.tools"] = configured_tools
 
 local function check(value, message)
 	assert(value, message)
@@ -130,8 +135,8 @@ while True:
 				picker_items, choose = items, callback
 			end,
 		} }
-	local function pick(text)
-		tools.pick(a)
+	local function pick(text, section)
+		tools.pick(a, section, true)
 		for _, item in ipairs(picker_items) do
 			if item.text:find(text, 1, true) then
 				choose(item)
@@ -140,16 +145,19 @@ while True:
 		end
 		error("Missing picker item: " .. text)
 	end
-	pick("Autoformat on save")
+	tools.pick(a)
+	check(#picker_items == 4, "overview must be limited to four categories")
+	check(picker_items[1].text:find("Language servers", 1, true), "overview must start with LSP status")
+	pick("Autoformat on save", "settings")
 	check(tools.format_on_save(a) ~= nil, "autoformat toggle must re-enable")
-	pick("LSP formatting")
+	pick("LSP formatting", "settings")
 	check(tools.format_policy(a) == "fallback", "LSP formatting toggle must re-enable")
-	pick("Linter · luacheck")
+	pick("luacheck", "linters")
 	check(vim.tbl_contains(captured[a].names, "luacheck"), "linter toggle must re-enable")
-	pick("Formatter · trim_whitespace")
-	pick("Formatter · stylua")
+	pick("trim_whitespace", "formatters")
+	pick("stylua", "formatters")
 	check(vim.deep_equal(tools.formatters(a), { "stylua", "trim_whitespace" }), "restore default pipeline order")
-	pick("LSP · project_test")
+	pick("project_test", "lsp")
 	wait_for(function()
 		return #vim.lsp.get_clients({ bufnr = a }) == 1
 	end, "LSP toggle must reattach")
@@ -160,11 +168,99 @@ while True:
 	check(saved[root_a].linters.typos == false, "overrides must persist")
 	saved[root_b] = { autoformat = false }
 	vim.fn.writefile({ vim.json.encode(saved) }, state_file)
-	pick("Reset repository to defaults")
+	pick("Reset repository to defaults", "settings")
 	saved = vim.json.decode(table.concat(vim.fn.readfile(state_file), "\n"))
 	check(saved[root_a] == nil, "reset removes overrides")
 	check(saved[root_b].autoformat == false, "writes must preserve other instance's repo state")
 	check(tools.format_on_save(a) ~= nil, "reset restores defaults")
+
+	-- Python alternatives are filetype-specific, and availability is not selection.
+	local python = buffer("python")
+	vim.bo[python].filetype = "python"
+	conform.formatters.black = { command = "python3" }
+	conform.formatters.ruff_fix = { command = "python3" }
+	conform.formatters.ruff_format = { command = "project-tools-test-missing-command" }
+	conform.formatters.ruff_organize_imports = { command = "project-tools-test-missing-command" }
+	vim.fn.mkdir(directory .. "/lsp", "p")
+	vim.fn.writefile(
+		{ 'return { cmd = { "python3" }, filetypes = { "python" } }' },
+		directory .. "/lsp/unlisted_python.lua"
+	)
+	vim.opt.rtp:append(directory)
+	lint.linters.flake8 = { cmd = "python3" }
+	lint.linters.ruff = { cmd = "python3" }
+	lint.linters.mypy = { cmd = "project-tools-test-missing-command" }
+	tools.update(tools.root(python), function(repo)
+		repo.formatters = { python = { "ruff_format" } }
+	end)
+	local function find_tool(kind, name)
+		for _, item in ipairs(tools.inspect(python)[kind]) do
+			if item.name == name then
+				return item
+			end
+		end
+		return nil
+	end
+	check(find_tool("formatters", "black") == nil, "installed but unlisted formatter must be excluded")
+	check(find_tool("formatters", "autopep8") == nil, "unlisted formatter suggestions must be excluded")
+	check(find_tool("linters", "flake8") == nil, "installed but unlisted linter must be excluded")
+	check(find_tool("linters", "mypy") == nil, "unlisted linter suggestions must be excluded")
+	check(find_tool("lsp", "unlisted_python") == nil, "runtime LSP definitions must not bypass tools.lua")
+	local ruff_fix = find_tool("formatters", "ruff_fix")
+	check(ruff_fix.available and not ruff_fix.enabled, "Ruff integration must be allowed by the Ruff tool entry")
+	local ruff = find_tool("formatters", "ruff_format")
+	check(
+		ruff.enabled and not ruff.available and ruff.status == "unavailable",
+		"selected missing formatter must not say ready"
+	)
+	tools.pick(python, "formatters")
+	local text = vim.iter(picker_items)
+		:map(function(item)
+			return item.text
+		end)
+		:join("\n")
+	check(text:find("ruff_format", 1, true), "selected unavailable tools must remain visible")
+	check(text:find("ruff_fix", 1, true), "listed relevant alternatives must be visible")
+	check(not text:find("black", 1, true), "unlisted formatter must not appear in picker")
+	check(not text:find("Browse all", 1, true), "picker must not offer an unrestricted catalog")
+	check(not text:find("stylua", 1, true), "unrelated formatters must be excluded")
+	check(text:find("Show unavailable tools", 1, true), "missing alternatives must be collapsed")
+	local ruff_lint = find_tool("linters", "ruff")
+	check(ruff_lint.available and not ruff_lint.enabled, "listed alternative linter starts disabled")
+	ruff_lint.toggle()
+	check(vim.tbl_contains(captured[python].names, "ruff"), "enabling an alternative linter must run it")
+	local ruff_ns = lint.get_namespace("ruff")
+	vim.diagnostic.set(ruff_ns, python, { { lnum = 0, col = 0, message = "old alternative linter diagnostic" } })
+	find_tool("linters", "ruff").toggle()
+	check(not vim.tbl_contains(captured[python].names, "ruff"), "disabling an alternative must stop reruns")
+	check(#vim.diagnostic.get(python, { namespace = ruff_ns }) == 0, "alternative linter diagnostics must clear")
+	configured_tools.lint[#configured_tools.lint + 1] = "mypy"
+	check(find_tool("linters", "mypy") ~= nil, "adding a tool to tools.lua must make its integration eligible")
+	table.remove(configured_tools.lint)
+	local lsp = tools.inspect(b).lsp[1]
+	check(lsp.running and lsp.status == "running", "attached client must report actual running state")
+	-- Exercise the real Snacks layout and highlighted format callback as well.
+	package.loaded.snacks = nil
+	local snacks = require("snacks")
+	snacks.setup({ picker = { enabled = true } })
+	tools.pick(python)
+	wait_for(function()
+		return #snacks.picker.get() == 1
+	end, "real overview picker must open")
+	local picker = snacks.picker.get()[1]
+	wait_for(function()
+		return picker:count() == 4
+	end, "real overview must render four rows")
+	picker:close()
+	tools.pick(python, "formatters")
+	wait_for(function()
+		return #snacks.picker.get() == 1
+	end, "real formatter picker must open")
+	picker = snacks.picker.get()[1]
+	wait_for(function()
+		return picker:count() > 2
+	end, "real formatter rows must render")
+	picker:close()
 	package.loaded["config.project-tools"] = nil
 	check(require("config.project-tools").format_on_save(b) == nil, "fresh module must load persisted state")
 	lint.try_lint = original_try_lint

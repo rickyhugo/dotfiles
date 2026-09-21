@@ -154,7 +154,7 @@ function M.setup_linters(defaults)
 	linter_defaults = defaults
 end
 
-local function linters(bufnr)
+local function default_linters(bufnr)
 	local ft = vim.bo[bufnr].filetype
 	local names = vim.deepcopy(linter_defaults[ft] or {})
 	if not linter_defaults[ft] then
@@ -164,6 +164,17 @@ local function linters(bufnr)
 	end
 	if not vim.tbl_contains(names, "typos") then
 		names[#names + 1] = "typos"
+	end
+	return names
+end
+
+local function linters(bufnr)
+	local ft = vim.bo[bufnr].filetype
+	local names = default_linters(bufnr)
+	for _, name in ipairs(require("config.project-tool-catalog").for_ft("linters", ft)) do
+		if (overrides(M.root(bufnr)).linters or {})[name] == true and not vim.tbl_contains(names, name) then
+			names[#names + 1] = name
+		end
 	end
 	return names
 end
@@ -222,7 +233,9 @@ local function reconcile(root)
 					end
 				end
 			end
-			for _, name in ipairs(linters(bufnr)) do
+			local diagnostics = linters(bufnr)
+			vim.list_extend(diagnostics, require("config.project-tool-catalog").linters[vim.bo[bufnr].filetype] or {})
+			for _, name in ipairs(diagnostics) do
 				vim.diagnostic.reset(require("lint").get_namespace(name), bufnr)
 			end
 			M.lint(bufnr)
@@ -241,53 +254,75 @@ function M.update(root, change)
 	reconcile(root)
 end
 
-local function select(items, title, callback)
-	require("snacks").picker.select(items, {
-		prompt = title,
-		format_item = function(item)
-			return item.text
-		end,
-	}, callback)
+local function union(...)
+	local result = {}
+	for _, list in ipairs({ ... }) do
+		for _, name in ipairs(list) do
+			if not vim.tbl_contains(result, name) then
+				result[#result + 1] = name
+			end
+		end
+	end
+	return result
 end
 
-function M.pick(bufnr)
-	bufnr = bufnr or vim.api.nvim_get_current_buf()
-	if not vim.api.nvim_buf_is_valid(bufnr) then
-		return
+local function executable(command)
+	if type(command) ~= "string" then
+		return nil
 	end
+	return vim.fn.executable(command) == 1
+end
+
+-- Runtime state is kept separate from the UI: enabled does not mean running.
+function M.inspect(bufnr)
 	local root, ft = M.root(bufnr), vim.bo[bufnr].filetype
 	local repo = overrides(root)
-	local items = {}
-	local function toggle(label, enabled, change)
-		items[#items + 1] = {
-			text = (enabled and "[x] " or "[ ] ") .. label,
-			change = change,
+	local catalog = require("config.project-tool-catalog")
+	local view = { root = root, ft = ft, lsp = {}, formatters = {}, linters = {}, settings = {} }
+	local function add(kind, name, enabled, available, status, detail, change)
+		local item = {
+			name = name,
+			enabled = enabled,
+			available = available,
+			status = status,
+			detail = detail,
+			toggle = function()
+				M.update(root, change)
+			end,
 		}
+		view[kind][#view[kind] + 1] = item
+		return item
 	end
-	toggle("Autoformat on save", repo.autoformat ~= false, function(value)
-		value.autoformat = nil
-		if repo.autoformat ~= false then
-			value.autoformat = false
-		end
-	end)
-	toggle("LSP formatting (fallback / Rust preferred)", repo.lsp_format ~= false, function(value)
-		value.lsp_format = nil
-		if repo.lsp_format ~= false then
-			value.lsp_format = false
-		end
-	end)
-	local servers = {}
-	for name in pairs(lsp_defaults) do
-		servers[name] = true
+	for _, setting in ipairs({ { "autoformat", "Autoformat on save" }, { "lsp_format", "LSP formatting" } }) do
+		local key, label = unpack(setting)
+		local enabled = repo[key] ~= false
+		add("settings", label, enabled, true, enabled and "on" or "off", nil, function(value)
+			value[key] = nil
+			if enabled then
+				value[key] = false
+			end
+		end)
 	end
-	for _, path in ipairs(vim.api.nvim_get_runtime_file("lsp/*.lua", true)) do
-		servers[vim.fn.fnamemodify(path, ":t:r")] = true
+	view.autoformat = repo.autoformat ~= false
+	view.lsp_format = M.format_policy(bufnr)
+	view.reset = function()
+		save(root, {})
+		reconcile(root)
 	end
-	for name in vim.spairs(servers) do
+	local attached = {}
+	for _, client in ipairs(vim.lsp.get_clients({ bufnr = bufnr })) do
+		attached[client.name] = true
+	end
+	for _, name in ipairs(require("config.tools").lsp) do
 		local config = vim.lsp.config[name]
-		if config and (not config.filetypes or vim.tbl_contains(config.filetypes, ft)) then
+		if config and ((config.filetypes and vim.tbl_contains(config.filetypes, ft)) or attached[name]) then
 			local enabled = M.lsp_enabled(name, bufnr)
-			toggle("LSP · " .. name, enabled, function(value)
+			local available = executable(type(config.cmd) == "table" and config.cmd[1] or nil)
+			local status = attached[name] and "running"
+				or (available == false and "missing executable")
+				or (enabled and "enabled · not attached")
+				or (available and "available" or "availability unknown")
+			local item = add("lsp", name, enabled, available, status, nil, function(value)
 				value.lsp = value.lsp or {}
 				local new = not enabled
 				value.lsp[name] = new
@@ -296,15 +331,19 @@ function M.pick(bufnr)
 				end
 				enable_lsp(name)
 			end)
+			item.running = attached[name] == true
 		end
 	end
 	local selected = M.formatters(bufnr)
-	local candidates = vim.deepcopy(selected)
-	for _, name in ipairs(formatter_defaults[ft] or {}) do
-		if not vim.tbl_contains(candidates, name) then
-			candidates[#candidates + 1] = name
-		end
+	local conform = require("conform")
+	local to_run, uses_lsp = conform.list_formatters_to_run(bufnr)
+	view.uses_lsp = uses_lsp
+	local scheduled = {}
+	for _, info in ipairs(to_run) do
+		scheduled[info.name] = true
 	end
+	local candidates =
+		catalog.filter("formatters", union(selected, formatter_defaults[ft] or {}, catalog.for_ft("formatters", ft)))
 	local function set_formatters(value, names)
 		value.formatters = value.formatters or {}
 		value.formatters[ft] = names
@@ -314,7 +353,11 @@ function M.pick(bufnr)
 	end
 	for _, name in ipairs(candidates) do
 		local index = vim.fn.index(selected, name)
-		toggle("Formatter · " .. name .. (index >= 0 and (" · step " .. index + 1) or ""), index >= 0, function(value)
+		local info = conform.get_formatter_info(name, bufnr)
+		local status = not info.available and "unavailable"
+			or (index >= 0 and (scheduled[name] and "ready" or "skipped · LSP preferred"))
+			or "available"
+		local item = add("formatters", name, index >= 0, info.available, status, info.available_msg, function(value)
 			local names = vim.deepcopy(selected)
 			if index >= 0 then
 				table.remove(names, index + 1)
@@ -334,53 +377,41 @@ function M.pick(bufnr)
 			end
 			set_formatters(value, names)
 		end)
+		item.step = index >= 0 and index + 1 or nil
 	end
-	for _, name in ipairs(linters(bufnr)) do
-		local enabled = (repo.linters or {})[name] ~= false
-		toggle("Linter · " .. name, enabled, function(value)
+	local configured = linters(bufnr)
+	local lint = require("lint")
+	local running = lint.get_running(bufnr)
+	for _, name in ipairs(catalog.filter("linters", union(configured, catalog.for_ft("linters", ft)))) do
+		local default = vim.tbl_contains(default_linters(bufnr), name)
+		local enabled = vim.tbl_contains(configured, name) and (repo.linters or {})[name] ~= false
+		local ok, command = pcall(function()
+			return vim.api.nvim_buf_call(bufnr, function()
+				local linter = lint.linters[name]
+				linter = type(linter) == "function" and linter() or linter
+				return type(linter.cmd) == "function" and linter.cmd() or linter.cmd
+			end)
+		end)
+		local available = ok and executable(command) or false
+		local status = vim.tbl_contains(running, name) and "running"
+			or (not available and "missing executable")
+			or (enabled and "ready · on read/save" or "available")
+		add("linters", name, enabled, available, status, nil, function(value)
 			value.linters = value.linters or {}
-			value.linters[name] = nil
-			if enabled then
-				value.linters[name] = false
+			value.linters[name] = not enabled
+			if (not enabled) == default then
+				value.linters[name] = nil
 			end
 		end)
 	end
-	items[#items + 1] = { text = "Add formatter to " .. ft .. "…", add = true }
-	items[#items + 1] = { text = "Reset repository to defaults", reset = true }
-	select(items, "Project tools · " .. root .. " · " .. ft, function(item)
-		if not item then
-			return
-		end
-		if item.add then
-			local available = {}
-			for _, path in ipairs(vim.api.nvim_get_runtime_file("lua/conform/formatters/*.lua", true)) do
-				local name = vim.fn.fnamemodify(path, ":t:r")
-				if not vim.tbl_contains(selected, name) then
-					available[#available + 1] = { text = name }
-				end
-			end
-			table.sort(available, function(a, b)
-				return a.text < b.text
-			end)
-			select(available, "Append formatter · " .. ft, function(choice)
-				if choice then
-					M.update(root, function(value)
-						selected[#selected + 1] = choice.text
-						set_formatters(value, selected)
-					end)
-				end
-				M.pick(bufnr)
-			end)
-			return
-		end
-		if item.reset then
-			save(root, {})
-			reconcile(root)
-		else
-			M.update(root, item.change)
-		end
-		M.pick(bufnr)
-	end)
+	return view
+end
+
+function M.pick(bufnr, section, show_missing)
+	bufnr = bufnr or vim.api.nvim_get_current_buf()
+	if vim.api.nvim_buf_is_valid(bufnr) then
+		require("config.project-tools-picker").open(bufnr, section, show_missing)
+	end
 end
 
 return M
