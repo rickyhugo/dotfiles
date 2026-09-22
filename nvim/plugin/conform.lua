@@ -1,6 +1,7 @@
 vim.pack.add({ "https://github.com/stevearc/conform.nvim" })
 
 local project_tools = require("config.project-tools")
+local ruff_command = require("conform.util").find_executable({ ".venv/bin/ruff" }, "ruff")
 
 require("conform").setup({
 	formatters_by_ft = project_tools.setup_formatters({
@@ -26,6 +27,11 @@ require("conform").setup({
 		zig = { "zigfmt" },
 		terraform = { "terraform_fmt" },
 	}),
+	formatters = {
+		ruff_fix = { command = ruff_command },
+		ruff_format = { command = ruff_command },
+		ruff_organize_imports = { command = ruff_command },
+	},
 	default_format_opts = { lsp_format = "fallback" },
 	format_on_save = project_tools.format_on_save,
 })
