@@ -1,7 +1,3 @@
-require("config.lsp-config")
-
-require("config.project-tools").setup_lsp(require("config.tools").lsp)
-
 vim.api.nvim_create_autocmd("LspAttach", {
 	group = vim.api.nvim_create_augroup("huen.lsp", {}),
 	desc = "LSP actions",
@@ -34,25 +30,5 @@ vim.api.nvim_create_autocmd("LspAttach", {
 		vim.keymap.set("n", "]d", function()
 			vim.diagnostic.jump({ count = 1, float = true })
 		end, { buffer = true, desc = "Go to next diagnostic [LSP]" })
-	end,
-})
-
--- INFO: zig
-vim.api.nvim_create_autocmd("BufWritePre", {
-	pattern = { "*.zig", "*.zon" },
-	callback = function(_)
-		vim.lsp.buf.code_action({
-			context = { only = { "source.fixAll" } },
-			apply = true,
-		})
-	end,
-})
-vim.api.nvim_create_autocmd("BufWritePre", {
-	pattern = { "*.zig", "*.zon" },
-	callback = function(_)
-		vim.lsp.buf.code_action({
-			context = { only = { "source.organizeImports" } },
-			apply = true,
-		})
 	end,
 })
