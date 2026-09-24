@@ -162,6 +162,10 @@
     "zen-mode.nvim": {
       "rev": "8564ce6d29ec7554eb9df578efa882d33b3c23a7",
       "src": "https://github.com/folke/zen-mode.nvim"
+    },
+    "zig.vim": {
+      "rev": "4842ab8cb1b000a9acb0a06170d404d12a154918",
+      "src": "https://codeberg.org/ziglang/zig.vim"
     }
   }
 }
