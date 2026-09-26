@@ -4,7 +4,7 @@
     "wrap": "word"
   },
   "session": {
-    "sidebar": "auto",
+    "sidebar": "hide",
     "scrollbar": false,
     "thinking": "hide"
   },
@@ -13,5 +13,8 @@
   "tabs": {
     "indicators": "numbers",
     "enabled": false
+  },
+  "keybinds": {
+    "variant.cycle": "<leader>v"
   }
 }
