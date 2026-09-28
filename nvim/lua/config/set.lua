@@ -94,3 +94,17 @@ end, {})
 
 -- btop themes are key=value config, not PHP.
 vim.filetype.add({ pattern = { [".*/btop/themes/.*%.theme"] = "conf" } })
+
+-- Compose files, so docker_compose_language_service attaches (yamlls still does).
+vim.filetype.add({
+	filename = {
+		["compose.yml"] = "yaml.docker-compose",
+		["compose.yaml"] = "yaml.docker-compose",
+		["docker-compose.yml"] = "yaml.docker-compose",
+		["docker-compose.yaml"] = "yaml.docker-compose",
+	},
+	pattern = {
+		[".*/docker%-compose%.[%w%-]+%.ya?ml"] = "yaml.docker-compose",
+		[".*/compose%.[%w%-]+%.ya?ml"] = "yaml.docker-compose",
+	},
+})

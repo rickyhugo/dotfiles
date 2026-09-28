@@ -8,6 +8,9 @@ directory = vim.uv.fs_realpath(directory)
 vim.fn.stdpath = function(kind)
 	return (kind == "state" or kind == "data") and (directory .. "/" .. kind) or original_stdpath(kind)
 end
+local home = directory .. "/home"
+vim.fn.mkdir(home, "p")
+vim.env.HOME = home
 vim.opt.rtp:prepend(vim.fn.getcwd() .. "/nvim")
 vim.opt.rtp:append(plugins .. "/conform.nvim")
 vim.opt.rtp:append(plugins .. "/nvim-lint")
@@ -147,7 +150,7 @@ return {
 	-- Formatting -----------------------------------------------------------------------
 	check(tools.format_on_save(b) == nil, "no project means no format on save")
 	check(tools.formatters(b).lsp_format == "never", "no project means no LSP formatting")
-	check(tools.format_on_save(a).timeout_ms == 500, "format on save defaults on")
+	check(tools.format_on_save(a).timeout_ms == 2000, "format on save defaults on")
 	check(tools.formatters(a).lsp_format == "fallback", "lsp_format defaults to fallback")
 	conform.format({ bufnr = a, async = false })
 	check(vim.api.nvim_buf_get_lines(a, 0, 1, false)[1] == "y = 1", "declared formatter must run from $PATH")
@@ -187,6 +190,55 @@ return {
 	end, "removed LSP must detach when the file changes on disk")
 	vim.fn.confirm = confirm
 	check(#vim.diagnostic.get(a, { namespace = lint.get_namespace("fakelint") }) == 0, "removed linter clears")
+
+	-- Global base ----------------------------------------------------------------------
+	check(tools.find_root(home .. "/somewhere") == nil, "home is never a project")
+	check(tools.get(b) == nil, "without a global file, buffers outside projects get nothing")
+	write(
+		home .. "/.nvim-tools.lua",
+		[[
+return {
+	format = { ["*"] = { "trim_whitespace" }, lua = { "trim_newlines" } },
+	lint = { ["*"] = { "fakelint" } },
+	format_on_save = false,
+}
+]]
+	)
+	wait_for(function()
+		return tools.get(b) ~= nil
+	end, "creating the global file applies it outside projects")
+	check(vim.deep_equal(tools.linters(b), { "fakelint" }), "outside projects: global linters")
+	local outside_formatters = tools.formatters(b)
+	check(
+		vim.deep_equal({ outside_formatters[1], outside_formatters[2] }, { "trim_newlines", "trim_whitespace" }),
+		"outside projects: global formatters, filetype first"
+	)
+	check(tools.format_on_save(b) == nil, "outside projects: global format_on_save")
+
+	local root_e = project(
+		"e",
+		'return { lint = { lua = { "ghostlint", "fakelint" } }, format = { lua = { "fakefmt" } }, format_on_save = true }'
+	)
+	local e = open(root_e .. "/test.lua")
+	check(vim.deep_equal(tools.linters(e), { "ghostlint", "fakelint" }), "linters add up without duplicates")
+	local project_formatters = tools.formatters(e)
+	check(
+		vim.deep_equal(
+			{ project_formatters[1], project_formatters[2], project_formatters[3] },
+			{ "fakefmt", "trim_whitespace" }
+		),
+		"a project's filetype formatters replace the global ones; '*' still applies"
+	)
+	check(tools.format_on_save(e) ~= nil, "project settings win over global ones")
+	vim.bo[e].filetype = "lua.special"
+	check(tools.formatters(e)[1] == "fakefmt", "dotted filetypes use the formatters of their first part")
+	vim.bo[e].filetype = "lua"
+
+	vim.fn.delete(home .. "/.nvim-tools.lua")
+	wait_for(function()
+		return tools.get(b) == nil
+	end, "deleting the global file removes it everywhere")
+	check(vim.deep_equal(tools.linters(e), { "ghostlint", "fakelint" }), "projects keep their own tools")
 
 	-- Edit + health ---------------------------------------------------------------------
 	vim.api.nvim_set_current_buf(b)

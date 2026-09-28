@@ -1,6 +1,7 @@
 -- Per-project wiring in <project>/.nvim-tools.lua: which LSP servers, formatters
--- and linters run. Without that file nothing runs. Executables come from the
--- $PATH Neovim inherits, e.g. the project's mise.local.toml via `mise activate`.
+-- and linters run. ~/.nvim-tools.lua is a global base that every buffer gets and
+-- project files add to; without either, nothing runs. Executables come from the
+-- $PATH Neovim inherits, e.g. the project's mise.local.toml via mise shims.
 local M = {}
 
 M.file = ".nvim-tools.lua"
@@ -11,6 +12,8 @@ local watched = { M.file, M.mise_file, "mise.toml", ".mise.toml", ".mise.local.t
 local lsp_formats = { never = true, fallback = true, prefer = true, first = true, last = true }
 
 local projects = {} -- root -> project
+local global -- { path, source, config?, error? } for ~/.nvim-tools.lua
+local outside -- effective setup for buffers outside any project
 local roots = {} -- directory -> root|false
 local wrapped = {} -- lsp names gated by project
 local watchers = {} -- root -> fs_event on the project directory
@@ -38,7 +41,16 @@ local function buffer_dir(bufnr)
 	return name ~= "" and vim.fs.dirname(name) or vim.fn.getcwd()
 end
 
---- Nearest ancestor directory containing .nvim-tools.lua.
+local function home()
+	return realpath(vim.env.HOME)
+end
+
+function M.global_path()
+	return home() .. "/" .. M.file
+end
+
+--- Nearest ancestor directory containing .nvim-tools.lua. Home is never a
+--- project: its .nvim-tools.lua is the global base.
 function M.find_root(path)
 	local dir = realpath(path)
 	if roots[dir] ~= nil then
@@ -46,7 +58,7 @@ function M.find_root(path)
 	end
 	local root, candidate = nil, dir
 	while candidate do
-		if vim.uv.fs_stat(candidate .. "/" .. M.file) then
+		if candidate ~= home() and vim.uv.fs_stat(candidate .. "/" .. M.file) then
 			root = candidate
 			break
 		end
@@ -134,48 +146,143 @@ local function read(path)
 	return config
 end
 
+local function union(...)
+	local result = {}
+	-- By count, not ipairs: a missing (nil) list must not end the loop.
+	for i = 1, select("#", ...) do
+		for _, name in ipairs(select(i, ...) or {}) do
+			if not vim.tbl_contains(result, name) then
+				result[#result + 1] = name
+			end
+		end
+	end
+	return result
+end
+
+-- lsp, lint and format["*"] add up; a project's format list for a filetype
+-- replaces the global one; project settings win.
+local function merge(base, own)
+	base, own = base or {}, own or {}
+	local format = vim.deepcopy(base.format or {})
+	for ft, list in pairs(own.format or {}) do
+		format[ft] = ft == "*" and union(format["*"], list) or vim.deepcopy(list)
+	end
+	local lint = vim.deepcopy(base.lint or {})
+	for ft, list in pairs(own.lint or {}) do
+		lint[ft] = union(lint[ft], list)
+	end
+	local function setting(key, default)
+		if own[key] ~= nil then
+			return own[key]
+		end
+		if base[key] ~= nil then
+			return base[key]
+		end
+		return default
+	end
+	return {
+		lsp = union(base.lsp, own.lsp),
+		format = format,
+		lint = lint,
+		format_on_save = setting("format_on_save", true),
+		lsp_format = setting("lsp_format", "fallback"),
+	}
+end
+
+local function apply(target, config)
+	target.lsp_names = config.lsp
+	target.lsp = {}
+	for _, name in ipairs(config.lsp) do
+		target.lsp[name] = true
+	end
+	target.format = config.format
+	target.lint = config.lint
+	target.format_on_save = config.format_on_save
+	target.lsp_format = config.lsp_format
+	return target
+end
+
+local enable_lsp, watch
+
+local function load_global()
+	if not global then
+		local path = M.global_path()
+		global = { path = path, source = source(path) }
+		if global.source then
+			local ok, config = pcall(read, path)
+			if ok then
+				global.config = config
+			else
+				global.error = config
+				warn_once("error:global", path .. ": " .. config)
+			end
+		end
+		watch(home(), { M.file }, function()
+			return (global and global.source) ~= source(M.global_path())
+		end, function()
+			M.reload_global()
+		end)
+	end
+	return global
+end
+
+--- The global file's state: { path, source, config?, error? }.
+function M.global()
+	return load_global()
+end
+
 local function load_project(root)
 	local path = root .. "/" .. M.file
-	local project =
-		{ root = root, path = path, source = sources(root), lsp_names = {}, lsp = {}, format = {}, lint = {} }
+	local project = { root = root, path = path, source = sources(root) }
 	if not vim.uv.fs_stat(root .. "/" .. M.mise_file) then
 		warn_once("mise:" .. root, "no " .. M.mise_file .. " in " .. root .. "; tools come from whatever $PATH has")
 	end
 	local ok, config = pcall(read, path)
 	if not ok then
+		-- A broken project file still gets the global base.
 		project.error = config
 		warn_once("error:" .. root, M.file .. " in " .. root .. ": " .. config)
-		return project
+		config = nil
 	end
-	project.lsp_names = config.lsp or {}
-	for _, name in ipairs(project.lsp_names) do
-		project.lsp[name] = true
-	end
-	project.format = config.format or {}
-	project.lint = config.lint or {}
-	project.format_on_save = config.format_on_save ~= false
-	project.lsp_format = config.lsp_format or "fallback"
-	return project
+	return apply(project, merge(load_global().config, config))
 end
 
-local enable_lsp, watch
-
+--- Effective setup for a buffer: its project merged over the global base, the
+--- global base alone outside projects, or nil when neither file exists.
 function M.get(bufnr)
 	bufnr = (bufnr == nil or bufnr == 0) and vim.api.nvim_get_current_buf() or bufnr
 	local root = M.find_root(buffer_dir(bufnr))
-	return root and M.load(root) or nil
+	if root then
+		return M.load(root)
+	end
+	return M.outside()
 end
 
 function M.load(root)
 	if not projects[root] then
 		local project = load_project(root)
 		projects[root] = project
-		watch(root)
+		watch(root, watched, function()
+			return (projects[root] and projects[root].source) ~= sources(root)
+		end, function()
+			M.reload(root)
+		end)
 		for _, name in ipairs(project.lsp_names) do
 			enable_lsp(name)
 		end
 	end
 	return projects[root]
+end
+
+--- The global base as buffers outside any project get it, or nil.
+function M.outside()
+	if not outside and load_global().config then
+		outside = apply({ path = global.path, global = true }, merge(global.config, nil))
+		for _, name in ipairs(outside.lsp_names) do
+			enable_lsp(name)
+		end
+	end
+	return outside
 end
 
 function M.loaded()
@@ -190,7 +297,7 @@ local function by_filetype(sections, ft)
 			vim.list_extend(names, sections[part] or {})
 		end
 	end
-	return vim.list_extend(vim.deepcopy(names), sections["*"] or {})
+	return union(names, sections["*"])
 end
 
 -- LSP -------------------------------------------------------------------------
@@ -233,8 +340,15 @@ function M.formatters(bufnr)
 	if not project then
 		return { lsp_format = "never" }
 	end
-	local list = project.format[vim.bo[bufnr].filetype] or {}
-	local names = vim.list_extend(vim.deepcopy(list), project.format["*"] or {})
+	local ft = vim.bo[bufnr].filetype
+	local list = project.format[ft]
+	-- A dotted filetype like yaml.docker-compose uses its first part that has a
+	-- list; chains are not combined, unlike linters.
+	for part in ft:gmatch("[^.]+") do
+		list = list or project.format[part]
+	end
+	list = list or {}
+	local names = union(list, project.format["*"])
 	names.lsp_format = list.lsp_format or project.lsp_format
 	names.stop_after_first = list.stop_after_first
 	return names
@@ -243,7 +357,8 @@ end
 function M.format_on_save(bufnr)
 	local project = M.get(bufnr)
 	if project and project.format_on_save then
-		return { timeout_ms = 500 }
+		-- Daemons like prettierd need ~0.5s for their first format after starting.
+		return { timeout_ms = 2000 }
 	end
 end
 
@@ -278,7 +393,10 @@ function M.lint(bufnr)
 		if command and vim.fn.executable(command) == 1 then
 			return true
 		end
-		warn_once("lint:" .. project.root .. name, name .. ": " .. (command or name) .. " not found on $PATH")
+		warn_once(
+			"lint:" .. (project.root or "global") .. name,
+			name .. ": " .. (command or name) .. " not found on $PATH"
+		)
 		return false
 	end, M.linters(bufnr))
 	vim.api.nvim_buf_call(bufnr, function()
@@ -298,69 +416,99 @@ local function owned(root, bufnr)
 	return contains(root, dir) and (nearest == nil or nearest == root or not contains(root, nearest))
 end
 
---- Re-read a project's file and restart its tools in open buffers.
-function M.reload(root)
+-- Stop the tools of `buffers`, refresh the loaded state, then let everything
+-- start again from the new files.
+local function restart(buffers, refresh)
+	local previous = {}
+	for _, bufnr in ipairs(buffers) do
+		previous[bufnr] = M.linters(bufnr)
+	end
 	roots = {}
 	warned = {}
-	local old = projects[root]
-	for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-		if owned(root, bufnr) then
-			for _, client in ipairs(vim.lsp.get_clients({ bufnr = bufnr })) do
-				if wrapped[client.name] then
-					client:stop(true)
-				end
-			end
-			for _, name in ipairs(old and by_filetype(old.lint, vim.bo[bufnr].filetype) or {}) do
-				vim.diagnostic.reset(require("lint").get_namespace(name), bufnr)
+	for _, bufnr in ipairs(buffers) do
+		for _, client in ipairs(vim.lsp.get_clients({ bufnr = bufnr })) do
+			if wrapped[client.name] then
+				client:stop(true)
 			end
 		end
+		for _, name in ipairs(previous[bufnr]) do
+			vim.diagnostic.reset(require("lint").get_namespace(name), bufnr)
+		end
 	end
-	projects[root] = nil
-	-- A deleted file unloads the project; its buffers fall back to any outer one.
-	if vim.uv.fs_stat(root .. "/" .. M.file) then
-		M.load(root)
-	end
+	refresh()
 	vim.schedule(function()
 		if next(wrapped) then
 			vim.cmd.doautoall("nvim.lsp.enable FileType")
 		end
-		for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-			if owned(root, bufnr) then
+		for _, bufnr in ipairs(buffers) do
+			if vim.api.nvim_buf_is_valid(bufnr) then
 				M.lint(bufnr)
 			end
 		end
 	end)
 end
 
+--- Re-read a project's file and restart its tools in open buffers.
+function M.reload(root)
+	local buffers = vim.tbl_filter(function(bufnr)
+		return owned(root, bufnr)
+	end, vim.api.nvim_list_bufs())
+	restart(buffers, function()
+		projects[root] = nil
+		-- A deleted file unloads the project; its buffers fall back to any outer
+		-- one or the global base.
+		if vim.uv.fs_stat(root .. "/" .. M.file) then
+			M.load(root)
+		end
+	end)
+end
+
+--- Re-read the global file; every buffer may change, so everything restarts.
+function M.reload_global()
+	local buffers = vim.tbl_filter(function(bufnr)
+		return vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].buftype == ""
+	end, vim.api.nvim_list_bufs())
+	restart(buffers, function()
+		global, outside, projects = nil, nil, {}
+		load_global()
+	end)
+end
+
 function M.reload_all()
-	for root in pairs(vim.deepcopy(projects)) do
-		M.reload(root)
+	M.reload_global()
+end
+
+--- Reload whatever `path` configures, after it was saved.
+function M.changed(path)
+	path = realpath(path)
+	if path == M.global_path() then
+		M.reload_global()
+	else
+		M.reload(vim.fs.dirname(path))
 	end
-	roots = {}
 end
 
 -- Reload when a watched file changes outside Neovim (another editor, git
 -- checkout, `mise use`). The directory is watched because editors often replace
--- files on save.
-watch = function(root)
-	if watchers[root] then
+-- files on save; `stale` filters out events that change nothing.
+watch = function(dir, names, stale, reload)
+	if watchers[dir] then
 		return
 	end
 	local watcher, timer = vim.uv.new_fs_event(), vim.uv.new_timer()
 	if not watcher or not timer then
 		return
 	end
-	watchers[root] = watcher
-	watcher:start(root, {}, function(err, filename)
-		if err or (filename and not vim.tbl_contains(watched, vim.fs.basename(filename))) then
+	watchers[dir] = watcher
+	watcher:start(dir, {}, function(err, filename)
+		if err or (filename and not vim.tbl_contains(names, vim.fs.basename(filename))) then
 			return
 		end
 		timer:stop()
 		timer:start(200, 0, function()
 			vim.schedule(function()
-				local project = projects[root]
-				if (project and project.source) ~= sources(root) then
-					M.reload(root)
+				if stale() then
+					reload()
 				end
 			end)
 		end)
@@ -368,7 +516,7 @@ watch = function(root)
 end
 
 local template = [[
--- Editor tools for this project. Nothing runs unless it is declared here.
+-- Editor tools for this project, added to the global ~/.nvim-tools.lua.
 -- Executables come from $PATH: pin them in mise.local.toml ([tools]).
 return {
 	lsp = {
@@ -386,16 +534,37 @@ return {
 }
 ]]
 
+local global_template = [[
+-- Editor tools for every buffer; project .nvim-tools.lua files add to these.
+-- Executables come from $PATH, e.g. your global mise config.
+return {
+	lsp = {},
+	format = {
+		-- ["*"] = { "trim_whitespace", "trim_newlines" },
+	},
+	lint = {
+		-- ["*"] = { "typos" },
+	},
+}
+]]
+
+local function open(path, contents)
+	if not vim.uv.fs_stat(path) then
+		vim.fn.writefile(vim.split(contents, "\n", { trimempty = true }), path)
+		roots = {}
+	end
+	vim.cmd.edit(vim.fn.fnameescape(path))
+end
+
+function M.edit_global()
+	open(M.global_path(), global_template)
+end
+
 function M.edit(bufnr)
 	bufnr = bufnr or vim.api.nvim_get_current_buf()
 	local dir = buffer_dir(bufnr)
 	local root = M.find_root(dir) or vim.fs.root(dir, ".git") or vim.fn.getcwd()
-	local path = root .. "/" .. M.file
-	if not vim.uv.fs_stat(path) then
-		vim.fn.writefile(vim.split(template, "\n", { trimempty = true }), path)
-		roots = {}
-	end
-	vim.cmd.edit(vim.fn.fnameescape(path))
+	open(root .. "/" .. M.file, template)
 end
 
 return M

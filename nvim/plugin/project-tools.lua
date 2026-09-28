@@ -7,6 +7,9 @@ local commands = {
 	edit = function()
 		tools.edit()
 	end,
+	global = function()
+		tools.edit_global()
+	end,
 	reload = function()
 		tools.reload_all()
 	end,
@@ -23,7 +26,7 @@ end, {
 	complete = function()
 		return vim.tbl_keys(commands)
 	end,
-	desc = "Project tools from .nvim-tools.lua (health|edit|reload)",
+	desc = "Project tools from .nvim-tools.lua (health|edit|global|reload)",
 })
 
 vim.keymap.set("n", "<leader>ct", "<cmd>ProjectTools<cr>", { desc = "Project tools health" })
@@ -41,6 +44,6 @@ vim.api.nvim_create_autocmd("BufWritePost", {
 	group = group,
 	pattern = "*/" .. tools.file,
 	callback = function(event)
-		tools.reload(vim.fs.dirname(vim.uv.fs_realpath(event.match) or event.match))
+		tools.changed(event.match)
 	end,
 })

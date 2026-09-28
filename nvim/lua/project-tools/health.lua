@@ -72,9 +72,18 @@ function M.check()
 	local alternate = vim.fn.bufnr("#")
 	local source = alternate > 0 and alternate or vim.api.nvim_get_current_buf()
 	tools.get(source)
+	local global = tools.global()
+	vim.health.start("project-tools: global " .. vim.fn.fnamemodify(global.path, ":~"))
+	if global.error then
+		vim.health.error(global.error, "Fix " .. global.path .. " then save it")
+	elseif not global.config then
+		vim.health.info("No global file; create one with :ProjectTools global")
+	else
+		-- The global base, as buffers outside any project get it.
+		M.report(tools.outside(), source)
+	end
 	local projects = tools.loaded()
 	if not next(projects) then
-		vim.health.start("project-tools")
 		vim.health.info("No " .. tools.file .. " found for any open buffer. Create one with :ProjectTools edit")
 		return
 	end
@@ -85,8 +94,9 @@ function M.check()
 			vim.health.warn("no " .. tools.mise_file .. "; tools come from whatever $PATH has")
 		end
 		if project.error then
-			vim.health.error(project.error, "Fix " .. project.path .. " then save it")
+			vim.health.error(project.error, "Fix " .. project.path .. " then save it; the global base still applies")
 		else
+			vim.health.info("Includes the global base")
 			M.report(project, source)
 		end
 	end

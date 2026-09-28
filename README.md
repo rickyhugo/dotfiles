@@ -13,8 +13,10 @@ MISE_ENV=work ./scripts/bootstrap_macos.sh          # macOS
 ## Neovim project tools
 
 A project declares which LSP servers, formatters and linters run in
-`.nvim-tools.lua` at its root. **Without that file, nothing runs.** The nearest
-`.nvim-tools.lua` above a buffer decides.
+`.nvim-tools.lua` at its root. The nearest `.nvim-tools.lua` above a buffer
+decides. `~/.nvim-tools.lua` is a global base with the same format: every
+buffer gets it, including files outside any project, and project files add to
+it. **Without either file, nothing runs.**
 
 ```lua
 return {
@@ -31,6 +33,14 @@ return {
 	lsp_format = "fallback", -- default: never | fallback | prefer | first | last
 }
 ```
+
+How a project combines with the global base:
+
+- `lsp`, `lint` and `format["*"]` add up, global entries first, without duplicates.
+- A project's `format` list for a filetype replaces the global list for it, so
+  two formatter chains never run on one file.
+- `format_on_save` and `lsp_format` set in the project win.
+- A project file with an error still gets the global base.
 
 Executables come from `$PATH`; the plugin knows nothing about where they come
 from. Pin versions in `mise.local.toml` next to it (a warning is shown when it
@@ -55,7 +65,8 @@ Missing tools are reported by the tools themselves: conform says the formatter
 is unavailable, Neovim's LSP client says the server failed to start, and a
 linter that isn't on `$PATH` warns once.
 
-Changing `.nvim-tools.lua` or the project's mise config (`mise.local.toml`,
+Changing `~/.nvim-tools.lua` restarts the tools of every buffer. Changing
+`.nvim-tools.lua` or the project's mise config (`mise.local.toml`,
 `mise.toml`, `.mise.toml`, `.tool-versions`) reloads the project: servers
 restart, so they pick up new versions, and diagnostics refresh. Deleting
 `.nvim-tools.lua` unloads the project.
@@ -66,8 +77,9 @@ anywhere (Neovim, another editor, an agent, `git checkout`) apply right away.
 
 Commands:
 
-- `:ProjectTools` / `<leader>ct`: health for loaded projects (`:checkhealth project-tools`).
+- `:ProjectTools` / `<leader>ct`: health for the global base and loaded projects (`:checkhealth project-tools`).
 - `:ProjectTools edit` / `<leader>cT`: open `.nvim-tools.lua`, creating it from a template.
+- `:ProjectTools global`: open `~/.nvim-tools.lua`, creating it from a template.
 - `:ProjectTools reload`: re-read every loaded project.
 
 Run the integration checks with installed Conform and nvim-lint plugins and Python 3:
