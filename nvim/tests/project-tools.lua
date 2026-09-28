@@ -234,6 +234,15 @@ return {
 	check(tools.formatters(e)[1] == "fakefmt", "dotted filetypes use the formatters of their first part")
 	vim.bo[e].filetype = "lua"
 
+	vim.api.nvim_set_current_buf(e)
+	tools.show()
+	local shown = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+	check(shown:find("-- project: ", 1, true) and shown:find("return {", 1, true), "show lists sources and the table")
+	local ok_chunk, shown_config = pcall(load(shown, "show", "t", {}))
+	check(ok_chunk and vim.deep_equal(shown_config, tools.effective(e)), "show prints loadable effective config")
+	check(#vim.lsp.get_clients({ bufnr = 0 }) == 0, "the show buffer starts no LSP")
+	vim.cmd.close()
+
 	vim.fn.delete(home .. "/.nvim-tools.lua")
 	wait_for(function()
 		return tools.get(b) == nil

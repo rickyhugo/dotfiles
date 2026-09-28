@@ -80,6 +80,9 @@ Commands:
 - `:ProjectTools` / `<leader>ct`: health for the global base and loaded projects (`:checkhealth project-tools`).
 - `:ProjectTools edit` / `<leader>cT`: open `.nvim-tools.lua`, creating it from a template.
 - `:ProjectTools global`: open `~/.nvim-tools.lua`, creating it from a template.
+- `:ProjectTools show`: the current buffer's effective config (global merged
+  with its project) as a `return { ... }` table, which files it came from, and
+  what runs for this buffer. `q` closes it.
 - `:ProjectTools reload`: re-read every loaded project.
 
 Run the integration checks with installed Conform and nvim-lint plugins and Python 3:

@@ -10,6 +10,9 @@ local commands = {
 	global = function()
 		tools.edit_global()
 	end,
+	show = function()
+		tools.show()
+	end,
 	reload = function()
 		tools.reload_all()
 	end,
@@ -26,7 +29,7 @@ end, {
 	complete = function()
 		return vim.tbl_keys(commands)
 	end,
-	desc = "Project tools from .nvim-tools.lua (health|edit|global|reload)",
+	desc = "Project tools from .nvim-tools.lua (health|edit|global|show|reload)",
 })
 
 vim.keymap.set("n", "<leader>ct", "<cmd>ProjectTools<cr>", { desc = "Project tools health" })

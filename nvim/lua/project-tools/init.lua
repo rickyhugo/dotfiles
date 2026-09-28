@@ -285,6 +285,21 @@ function M.outside()
 	return outside
 end
 
+--- The effective config for a buffer, as a plain .nvim-tools.lua table, or nil.
+function M.effective(bufnr)
+	local project = M.get(bufnr)
+	if not project then
+		return nil
+	end
+	return {
+		lsp = vim.deepcopy(project.lsp_names),
+		format = vim.deepcopy(project.format),
+		lint = vim.deepcopy(project.lint),
+		format_on_save = project.format_on_save,
+		lsp_format = project.lsp_format,
+	}
+end
+
 function M.loaded()
 	return projects
 end
@@ -554,6 +569,57 @@ local function open(path, contents)
 		roots = {}
 	end
 	vim.cmd.edit(vim.fn.fnameescape(path))
+end
+
+--- Open a scratch split with the buffer's effective config and where it came from.
+function M.show(bufnr)
+	bufnr = (bufnr == nil or bufnr == 0) and vim.api.nvim_get_current_buf() or bufnr
+	local project, config = M.get(bufnr), M.effective(bufnr)
+	local ft = vim.bo[bufnr].filetype
+	local lines =
+		{ "-- Effective " .. M.file .. " for " .. vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":~:.") }
+	local g = load_global()
+	lines[#lines + 1] = "-- global:  "
+		.. vim.fn.fnamemodify(g.path, ":~")
+		.. (g.error and (" (error: " .. g.error .. ")") or g.config and "" or " (none)")
+	if project and project.root then
+		lines[#lines + 1] = "-- project: "
+			.. vim.fn.fnamemodify(project.path, ":~")
+			.. (project.error and (" (error: " .. project.error .. ")") or "")
+	else
+		lines[#lines + 1] = "-- project: none"
+	end
+	if config then
+		local formatters = M.formatters(bufnr)
+		lines[#lines + 1] = "-- this buffer (filetype "
+			.. (ft ~= "" and ft or "none")
+			.. "): format = "
+			.. (#formatters > 0 and table.concat(formatters, ", ") or "none")
+			.. " (lsp_format "
+			.. formatters.lsp_format
+			.. "), lint = "
+			.. (#M.linters(bufnr) > 0 and table.concat(M.linters(bufnr), ", ") or "none")
+		vim.list_extend(lines, vim.split("return " .. vim.inspect(config), "\n"))
+	else
+		lines[#lines + 1] = "-- Nothing applies: no global file and no project file."
+	end
+
+	local name = "project-tools://effective"
+	local existing = vim.fn.bufnr(name)
+	if existing ~= -1 then
+		vim.api.nvim_buf_delete(existing, { force = true })
+	end
+	vim.cmd("botright new")
+	local buf = vim.api.nvim_get_current_buf()
+	-- buftype first, so the lua filetype below starts no LSP or linter here.
+	vim.bo[buf].buftype = "nofile"
+	vim.bo[buf].bufhidden = "wipe"
+	vim.bo[buf].swapfile = false
+	vim.api.nvim_buf_set_name(buf, name)
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	vim.bo[buf].modifiable = false
+	vim.bo[buf].filetype = "lua"
+	vim.keymap.set("n", "q", "<cmd>close<cr>", { buffer = buf, desc = "Close" })
 end
 
 function M.edit_global()
