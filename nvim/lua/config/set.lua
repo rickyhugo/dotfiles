@@ -108,3 +108,6 @@ vim.filetype.add({
 		[".*/compose%.[%w%-]+%.ya?ml"] = "yaml.docker-compose",
 	},
 })
+
+-- GitHub Actions workflows, so actionlint only lints those (yamlls still attaches).
+vim.filetype.add({ pattern = { [".*/%.github/workflows/.*%.ya?ml"] = "yaml.github" } })

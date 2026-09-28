@@ -17,11 +17,7 @@ vim.lsp.config["lua_ls"] = {
 			diagnostics = {
 				globals = { "vim" },
 			},
-			workspace = {
-				library = {
-					vim.env.VIMRUNTIME,
-				},
-			},
+			-- workspace.library comes from lazydev.nvim (plugin/lazydev.lua).
 		},
 	},
 }
@@ -103,20 +99,31 @@ vim.lsp.config["rust_analyzer"] = {
 
 vim.lsp.config["terraform-ls"] = { settings = {} }
 
+vim.lsp.config["jsonls"] = {
+	settings = {
+		json = { validate = { enable = true } },
+	},
+	-- Schemas for package.json, tsconfig.json, renovate.json, ... by file name.
+	-- Looked up at start, since SchemaStore.nvim loads after this file.
+	before_init = function(_, config)
+		config.settings.json.schemas = require("schemastore").json.schemas()
+	end,
+}
+
 vim.lsp.config["yamlls"] = {
+	-- lspconfig's list plus GitHub workflows (see set.lua).
+	filetypes = { "yaml", "yaml.docker-compose", "yaml.gitlab", "yaml.helm-values", "yaml.github" },
 	settings = {
 		yaml = {
-			schemas = {
-				kubernetes = "k8s-*.yaml",
-				["http://json.schemastore.org/github-workflow"] = ".github/workflows/*",
-				["http://json.schemastore.org/github-action"] = ".github/action.{yml,yaml}",
-				["http://json.schemastore.org/prettierrc"] = ".prettierrc.{yml,yaml}",
-				["http://json.schemastore.org/kustomization"] = "kustomization.{yml,yaml}",
-				["http://json.schemastore.org/chart"] = "Chart.{yml,yaml}",
-				["http://json.schemastore.org/circleciconfig"] = ".circleci/**/*.{yml,yaml}",
-			},
+			-- Off, so the built-in catalog download doesn't compete with SchemaStore.nvim.
+			-- Project-specific mappings go in a project's .nvim-tools.lua `settings`.
+			schemaStore = { enable = false, url = "" },
 		},
 	},
+	-- Same pinned catalog as jsonls, looked up at start (SchemaStore.nvim loads later).
+	before_init = function(_, config)
+		config.settings.yaml.schemas = require("schemastore").yaml.schemas()
+	end,
 }
 
 vim.lsp.config["helm-ls"] = {

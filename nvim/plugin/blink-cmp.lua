@@ -24,10 +24,13 @@ require("blink.cmp").setup({
 
 		per_filetype = {
 			sql = { "snippets", "dadbod", "buffer" },
+			lua = { inherit_defaults = true, "lazydev" },
 		},
 
 		providers = {
 			dadbod = { name = "Dadbod", module = "vim_dadbod_completion.blink" },
+			-- require() module names and plugin fields, ahead of lua_ls.
+			lazydev = { name = "LazyDev", module = "lazydev.integrations.blink", score_offset = 100 },
 
 			emoji = {
 				module = "blink-emoji",

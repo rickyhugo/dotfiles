@@ -90,9 +90,6 @@ function M.check()
 	for _, root in ipairs(sorted_keys(projects)) do
 		local project = projects[root]
 		vim.health.start("project-tools: " .. vim.fn.fnamemodify(root, ":~"))
-		if not vim.uv.fs_stat(root .. "/" .. tools.mise_file) then
-			vim.health.warn("no " .. tools.mise_file .. "; tools come from whatever $PATH has")
-		end
 		if project.error then
 			vim.health.error(project.error, "Fix " .. project.path .. " then save it; the global base still applies")
 		else

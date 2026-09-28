@@ -31,6 +31,10 @@ return {
 	},
 	format_on_save = true, -- default
 	lsp_format = "fallback", -- default: never | fallback | prefer | first | last
+	-- Extra server settings for this project, merged over nvim/lua/config/lsp-config.lua.
+	settings = {
+		basedpyright = { basedpyright = { analysis = { typeCheckingMode = "strict" } } },
+	},
 }
 ```
 
@@ -40,6 +44,7 @@ How a project combines with the global base:
 - A project's `format` list for a filetype replaces the global list for it, so
   two formatter chains never run on one file.
 - `format_on_save` and `lsp_format` set in the project win.
+- `settings` are deep-merged per server; the project's values win.
 - A project file with an error still gets the global base.
 
 Executables come from `$PATH`; the plugin knows nothing about where they come

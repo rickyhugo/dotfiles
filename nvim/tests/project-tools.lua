@@ -104,6 +104,7 @@ return {
 	lsp = { "project_test" },
 	format = { lua = { "fakefmt", "trim_whitespace" } },
 	lint = { lua = { "fakelint", "ghostlint" } },
+	settings = { project_test = { nested = { value = 1 } } },
 }
 ]]
 	local root_a = project("a", config_a)
@@ -129,10 +130,8 @@ return {
 	check(tools.find_root(root_b) == nil, "a repo without the file is not a project")
 	check(tools.load(root_c).error:find("pin versions in mise.local.toml", 1, true), "tools belong in mise")
 	check(not tools.load(root_d).error, "a minimal file must load")
-	wait_for(function()
-		return notified("no mise.local.toml in " .. root_d)
-	end, "a project without mise.local.toml must warn")
-	check(not notified("no mise.local.toml in " .. root_a), "a project with mise.local.toml must not warn")
+	vim.wait(100)
+	check(not notified("no mise.local.toml"), "a project without mise.local.toml doesn't warn")
 
 	local a = open(root_a .. "/sub/test.lua", { "x = 1", "bad" })
 	local b = open(root_b .. "/test.lua")
@@ -144,6 +143,10 @@ return {
 		return #vim.lsp.get_clients({ bufnr = a }) == 1
 	end, "declared LSP must attach")
 	check(vim.lsp.get_clients({ bufnr = a })[1].root_dir == root_a, "LSP keeps its root_markers root")
+	check(
+		vim.tbl_get(vim.lsp.get_clients({ bufnr = a })[1].settings, "nested", "value") == 1,
+		"a project's settings reach its server"
+	)
 	vim.wait(200)
 	check(#vim.lsp.get_clients({ bufnr = b }) == 0, "LSP must not attach outside declaring projects")
 
@@ -199,6 +202,7 @@ return {
 		[[
 return {
 	format = { ["*"] = { "trim_whitespace" }, lua = { "trim_newlines" } },
+	settings = { project_test = { nested = { value = 0, global_only = true } } },
 	lint = { ["*"] = { "fakelint" } },
 	format_on_save = false,
 }
@@ -230,6 +234,10 @@ return {
 		"a project's filetype formatters replace the global ones; '*' still applies"
 	)
 	check(tools.format_on_save(e) ~= nil, "project settings win over global ones")
+	check(
+		vim.deep_equal(tools.effective(e).settings.project_test, { nested = { value = 0, global_only = true } }),
+		"server settings come from the global base when the project has none"
+	)
 	vim.bo[e].filetype = "lua.special"
 	check(tools.formatters(e)[1] == "fakefmt", "dotted filetypes use the formatters of their first part")
 	vim.bo[e].filetype = "lua"
@@ -263,7 +271,6 @@ return {
 	require("project-tools.health").check()
 	local text = table.concat(reported, "\n")
 	check(text:find("format lua fakefmt → " .. bin .. "/fakefmt", 1, true), "health reports formatter paths")
-	check(text:find("warn: no mise.local.toml", 1, true), "health reports a missing mise.local.toml")
 
 	vim.fn.delete(root_a .. "/" .. tools.file)
 	wait_for(function()

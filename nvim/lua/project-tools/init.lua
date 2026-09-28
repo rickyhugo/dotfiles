@@ -84,11 +84,18 @@ end
 local function validate(config)
 	check(type(config) == "table", "must return a table")
 	check(config.tools == nil, "tools are not declared here; pin versions in " .. M.mise_file)
-	local known = { lsp = true, format = true, lint = true, format_on_save = true, lsp_format = true }
+	local known = { lsp = true, format = true, lint = true, format_on_save = true, lsp_format = true, settings = true }
 	for key in pairs(config) do
 		check(known[key], "unknown key '" .. tostring(key) .. "'")
 	end
 	check(config.lsp == nil or list_of_strings(config.lsp), "lsp must be a list of lsp config names")
+	check(config.settings == nil or type(config.settings) == "table", "settings must be a table keyed by lsp name")
+	for name, settings in pairs(config.settings or {}) do
+		check(
+			type(name) == "string" and type(settings) == "table",
+			"settings['" .. tostring(name) .. "'] must be a table"
+		)
+	end
 	for _, key in ipairs({ "format", "lint" }) do
 		check(config[key] == nil or type(config[key]) == "table", key .. " must be a table")
 	end
@@ -186,6 +193,8 @@ local function merge(base, own)
 		lint = lint,
 		format_on_save = setting("format_on_save", true),
 		lsp_format = setting("lsp_format", "fallback"),
+		-- Per server, deep-merged: the project's values win.
+		settings = vim.tbl_deep_extend("force", base.settings or {}, own.settings or {}),
 	}
 end
 
@@ -199,6 +208,7 @@ local function apply(target, config)
 	target.lint = config.lint
 	target.format_on_save = config.format_on_save
 	target.lsp_format = config.lsp_format
+	target.settings = config.settings
 	return target
 end
 
@@ -234,9 +244,6 @@ end
 local function load_project(root)
 	local path = root .. "/" .. M.file
 	local project = { root = root, path = path, source = sources(root) }
-	if not vim.uv.fs_stat(root .. "/" .. M.mise_file) then
-		warn_once("mise:" .. root, "no " .. M.mise_file .. " in " .. root .. "; tools come from whatever $PATH has")
-	end
 	local ok, config = pcall(read, path)
 	if not ok then
 		-- A broken project file still gets the global base.
@@ -297,6 +304,7 @@ function M.effective(bufnr)
 		lint = vim.deepcopy(project.lint),
 		format_on_save = project.format_on_save,
 		lsp_format = project.lsp_format,
+		settings = vim.deepcopy(project.settings),
 	}
 end
 
@@ -317,7 +325,20 @@ end
 
 -- LSP -------------------------------------------------------------------------
 
--- Only attach a server to buffers whose project declares it.
+-- Deep-merge src into dst in place: a client keeps a reference to its settings
+-- table, so replacing it would go unnoticed.
+local function merge_into(dst, src)
+	for key, value in pairs(src) do
+		if type(value) == "table" and type(dst[key]) == "table" and not vim.islist(value) then
+			merge_into(dst[key], value)
+		else
+			dst[key] = vim.deepcopy(value)
+		end
+	end
+end
+
+-- Only attach a server to buffers whose project declares it, and give it that
+-- project's settings for it.
 enable_lsp = function(name)
 	if not wrapped[name] then
 		local config = vim.lsp.config[name]
@@ -325,9 +346,23 @@ enable_lsp = function(name)
 			warn_once("lsp:" .. name, "unknown LSP config '" .. name .. "'")
 			return
 		end
-		local root_dir = config.root_dir
+		local root_dir, before_init = config.root_dir, config.before_init
 		wrapped[name] = true
 		vim.lsp.config(name, {
+			before_init = function(params, client_config)
+				if before_init then
+					before_init(params, client_config)
+				end
+				local root = client_config.root_dir and M.find_root(client_config.root_dir)
+				local project = root and M.load(root) or M.outside()
+				local settings = project and project.settings[name]
+				if settings then
+					merge_into(client_config.settings, settings)
+				end
+			end,
+			-- The client takes this table (or a fresh {} when there is none) before
+			-- before_init runs, so it must exist for the merge above to reach it.
+			settings = {},
 			root_dir = function(bufnr, on_dir)
 				local project = M.get(bufnr)
 				if not (project and project.lsp[name]) then
