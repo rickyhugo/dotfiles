@@ -60,11 +60,9 @@ Changing `.nvim-tools.lua` or the project's mise config (`mise.local.toml`,
 restart, so they pick up new versions, and diagnostics refresh. Deleting
 `.nvim-tools.lua` unloads the project.
 
-`.nvim-tools.lua` runs with an empty environment (declarations only) and must be
-trusted. Saving it from Neovim trusts it; the first load of a file created
-elsewhere shows Neovim's trust prompt. An edit made outside Neovim (another
-editor, an agent, `git checkout`) isn't trusted yet, so the running setup stays
-as it is and a notification asks you to open and save the file to apply it.
+`.nvim-tools.lua` runs with an empty environment, so it can only name tools,
+not run code. It isn't checked against Neovim's `:trust` list, so edits from
+anywhere (Neovim, another editor, an agent, `git checkout`) apply right away.
 
 Commands:
 

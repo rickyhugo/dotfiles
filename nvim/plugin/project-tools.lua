@@ -41,8 +41,6 @@ vim.api.nvim_create_autocmd("BufWritePost", {
 	group = group,
 	pattern = "*/" .. tools.file,
 	callback = function(event)
-		-- Saving it from Neovim is what trusting it means.
-		vim.secure.trust({ action = "allow", bufnr = event.buf })
 		tools.reload(vim.fs.dirname(vim.uv.fs_realpath(event.match) or event.match))
 	end,
 })

@@ -118,29 +118,13 @@ local function sources(root)
 	return table.concat(parts, "\0")
 end
 
--- Like vim.secure.read's check, without prompting: Neovim's trust database has
--- one "<sha256> <path>" line per trusted file.
-local function trusted(path)
-	local contents, database = source(path), source(vim.fn.stdpath("state") .. "/trust")
-	if not contents or not database then
-		return false
-	end
-	local hash, fullpath = vim.fn.sha256(contents), realpath(path)
-	for line in vim.gsplit(database, "\n", { plain = true }) do
-		local line_hash, file = line:match("^(%S+) (.+)$")
-		if file == fullpath then
-			return line_hash == hash
-		end
-	end
-	return false
-end
-
 local function read(path)
-	local contents = vim.secure.read(path)
+	local contents = source(path)
 	if not contents then
-		error("not trusted; run :trust " .. path .. " or save it from Neovim", 0)
+		error("cannot read " .. path, 0)
 	end
-	-- Declarations only: the file gets an empty environment.
+	-- Declarations only: the file gets an empty environment, so it can name
+	-- tools but not run code.
 	local chunk, err = load(contents, "@" .. path, "t", {})
 	if not chunk then
 		error(err, 0)
@@ -357,8 +341,7 @@ end
 
 -- Reload when a watched file changes outside Neovim (another editor, git
 -- checkout, `mise use`). The directory is watched because editors often replace
--- files on save. An untrusted .nvim-tools.lua keeps the running setup instead of
--- prompting mid-edit; saving it from Neovim trusts and applies it.
+-- files on save.
 watch = function(root)
 	if watchers[root] then
 		return
@@ -375,19 +358,10 @@ watch = function(root)
 		timer:stop()
 		timer:start(200, 0, function()
 			vim.schedule(function()
-				local project, path = projects[root], root .. "/" .. M.file
-				if (project and project.source) == sources(root) then
-					return
+				local project = projects[root]
+				if (project and project.source) ~= sources(root) then
+					M.reload(root)
 				end
-				local contents = source(path)
-				if contents and not trusted(path) then
-					warn_once(
-						"untrusted:" .. root .. vim.fn.sha256(contents),
-						M.file .. " changed outside Neovim; open and save it to apply (" .. root .. ")"
-					)
-					return
-				end
-				M.reload(root)
 			end)
 		end)
 	end)
@@ -419,7 +393,6 @@ function M.edit(bufnr)
 	local path = root .. "/" .. M.file
 	if not vim.uv.fs_stat(path) then
 		vim.fn.writefile(vim.split(template, "\n", { trimempty = true }), path)
-		vim.secure.trust({ action = "allow", path = path })
 		roots = {}
 	end
 	vim.cmd.edit(vim.fn.fnameescape(path))

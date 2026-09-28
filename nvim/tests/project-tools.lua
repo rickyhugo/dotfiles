@@ -51,7 +51,6 @@ local function project(name, config, mise)
 	end
 	if config then
 		write(root .. "/.nvim-tools.lua", config)
-		vim.secure.trust({ action = "allow", path = root .. "/.nvim-tools.lua" })
 	end
 	return root
 end
@@ -175,27 +174,18 @@ return {
 		return client and client.id ~= client_id
 	end, "a mise.local.toml change must restart LSP servers")
 
-	-- An untrusted outside edit keeps the running setup and asks for a save.
-	local confirm = vim.fn.confirm
-	vim.fn.confirm = function()
-		error("an outside edit must not prompt")
-	end
-	write(root_a .. "/.nvim-tools.lua", config_a .. "-- edited elsewhere")
-	wait_for(function()
-		return notified(".nvim-tools.lua changed outside Neovim; open and save it to apply")
-	end, "an untrusted outside edit must say how to apply it")
-	check(#vim.lsp.get_clients({ bufnr = a }) == 1, "an untrusted outside edit keeps the LSP running")
-	check(not tools.get(a).error, "an untrusted outside edit keeps the project loaded")
-	vim.fn.confirm = confirm
-
 	local reduced =
 		config_a:gsub('lsp = { "project_test" },', ""):gsub('lint = { lua = { "fakelint", "ghostlint" } },', "")
+	-- An outside edit applies directly: no reload call, no trust prompt.
+	local confirm = vim.fn.confirm
+	vim.fn.confirm = function()
+		error("loading .nvim-tools.lua must not prompt")
+	end
 	write(root_a .. "/.nvim-tools.lua", reduced)
-	vim.secure.trust({ action = "allow", path = root_a .. "/.nvim-tools.lua" })
-	-- No explicit reload: the directory watcher notices the change.
 	wait_for(function()
 		return #vim.lsp.get_clients({ bufnr = a }) == 0
 	end, "removed LSP must detach when the file changes on disk")
+	vim.fn.confirm = confirm
 	check(#vim.diagnostic.get(a, { namespace = lint.get_namespace("fakelint") }) == 0, "removed linter clears")
 
 	-- Edit + health ---------------------------------------------------------------------
