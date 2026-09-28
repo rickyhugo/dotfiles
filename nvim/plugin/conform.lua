@@ -1,37 +1,9 @@
 vim.pack.add({ "https://github.com/stevearc/conform.nvim" })
 
-local project_tools = require("config.project-tools")
-local ruff_command = require("conform.util").find_executable({ ".venv/bin/ruff" }, "ruff")
+local project_tools = require("project-tools")
 
 require("conform").setup({
-	formatters_by_ft = project_tools.setup_formatters({
-		javascript = { "biome-check" },
-		typescript = { "biome-check" },
-		javascriptreact = { "biome-check" },
-		typescriptreact = { "biome-check" },
-		css = { "prettierd" },
-		html = { "prettierd" },
-		astro = { "prettierd" },
-		svelte = { "prettierd" },
-		graphql = { "prettierd" },
-		json = { "prettierd" },
-		json5 = { "prettierd" },
-		yaml = { "prettierd" },
-		markdown = { "prettierd" },
-		lua = { "stylua" },
-		python = { "ruff_fix", "ruff_format", "ruff_organize_imports" },
-		sh = { "shfmt", "shellharden" },
-		toml = { "taplo" },
-		rust = {},
-		go = { "goimports", "gofumpt", "golines" },
-		zig = { "zigfmt" },
-		terraform = { "terraform_fmt" },
-	}),
-	formatters = {
-		ruff_fix = { command = ruff_command },
-		ruff_format = { command = ruff_command },
-		ruff_organize_imports = { command = ruff_command },
-	},
-	default_format_opts = { lsp_format = "fallback" },
+	-- Everything comes from .nvim-tools.lua; "_" covers every filetype.
+	formatters_by_ft = { ["_"] = project_tools.formatters },
 	format_on_save = project_tools.format_on_save,
 })

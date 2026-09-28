@@ -1,22 +1,17 @@
 -- Run with: nvim --clean --headless -l nvim/tests/project-tools.lua
--- Uses installed Conform/nvim-lint/Snacks, isolated state, and a tiny real LSP server.
-local directory = vim.fn.tempname()
+-- Uses installed Conform/nvim-lint, isolated data/state, a fake mise and a tiny real LSP server.
+local original_stdpath = vim.fn.stdpath
+local plugins = original_stdpath("data") .. "/site/pack/core/opt"
+local directory = vim.uv.fs_realpath(vim.fn.tempname()) or vim.fn.tempname()
 vim.fn.mkdir(directory, "p")
 directory = vim.uv.fs_realpath(directory)
-local original_stdpath = vim.fn.stdpath
-local data = original_stdpath("data")
 vim.fn.stdpath = function(kind)
-	return kind == "state" and directory .. "/state" or original_stdpath(kind)
+	return (kind == "state" or kind == "data") and (directory .. "/" .. kind) or original_stdpath(kind)
 end
+vim.fn.mkdir(directory .. "/state", "p")
 vim.opt.rtp:prepend(vim.fn.getcwd() .. "/nvim")
-vim.opt.rtp:append(data .. "/site/pack/core/opt/conform.nvim")
-vim.opt.rtp:append(data .. "/site/pack/core/opt/nvim-lint")
-vim.opt.rtp:append(data .. "/site/pack/core/opt/snacks.nvim")
-local configured_tools = vim.deepcopy(require("config.tools"))
-configured_tools.lsp[#configured_tools.lsp + 1] = "project_test"
-configured_tools.lint[#configured_tools.lint + 1] = "trim_whitespace"
-package.loaded["config.tools"] = configured_tools
-require("config.project-tool-catalog").lsp_roles.project_test = { diagnostics = true }
+vim.opt.rtp:append(plugins .. "/conform.nvim")
+vim.opt.rtp:append(plugins .. "/nvim-lint")
 
 local function check(value, message)
 	assert(value, message)
@@ -26,11 +21,58 @@ local function wait_for(predicate, message)
 	check(vim.wait(3000, predicate, 20), message)
 end
 
+local function write(path, lines, mode)
+	vim.fn.mkdir(vim.fs.dirname(path), "p")
+	vim.fn.writefile(type(lines) == "string" and vim.split(lines, "\n") or lines, path)
+	if mode then
+		vim.uv.fs_chmod(path, mode)
+	end
+end
+
+local function script(path, body)
+	write(path, "#!/bin/sh\n" .. body, 493)
+end
+
+local function project(name, config)
+	local root = directory .. "/" .. name
+	vim.fn.mkdir(root .. "/.git", "p")
+	if config then
+		write(root .. "/.nvim-tools.lua", config)
+		vim.secure.trust({ action = "allow", path = root .. "/.nvim-tools.lua" })
+	end
+	return root
+end
+
+local function open(path, lines)
+	write(path, lines or { "x = 1" })
+	local buf = vim.fn.bufadd(path)
+	vim.fn.bufload(buf)
+	vim.bo[buf].filetype = "lua"
+	return buf
+end
+
 local function run()
+	-- Providers --------------------------------------------------------------
+	-- A fake mise that knows one installed tool version.
+	local mise_bin = directory .. "/mise-installs/misetool/1.2.0/bin"
+	script(mise_bin .. "/misetool", "exit 0")
+	local fake_mise = directory .. "/mise-bin"
+	script(
+		fake_mise .. "/mise",
+		string.format(
+			'[ "$1 $2 $3" = "bin-paths --json misetool@1.2.0" ] && echo \'[{"name":"misetool","path":"%s/misetool"}]\' || echo "[]"',
+			mise_bin
+		)
+	)
+	local system_bin = directory .. "/system-bin"
+	script(system_bin .. "/fakelint", 'grep -q bad && echo "1:bad line"; exit 0')
+	script(system_bin .. "/misetool", "exit 0")
+	vim.env.PATH = fake_mise .. ":" .. system_bin .. ":" .. vim.env.PATH
+
 	local server = directory .. "/server.py"
-	vim.fn.writefile(
-		vim.split(
-			[[
+	write(
+		server,
+		[[
 import json, sys
 while True:
     headers = {}
@@ -46,279 +88,130 @@ while True:
     if msg.get('method') == 'exit':
         break
     if 'id' in msg:
-        result = {'capabilities': {'textDocumentSync': 1, 'documentFormattingProvider': True}} if msg.get('method') == 'initialize' else None
+        result = {'capabilities': {'textDocumentSync': 1}} if msg.get('method') == 'initialize' else None
         body = json.dumps({'jsonrpc': '2.0', 'id': msg['id'], 'result': result}).encode()
         sys.stdout.buffer.write(f'Content-Length: {len(body)}\r\n\r\n'.encode() + body)
         sys.stdout.buffer.flush()
-]],
-			"\n"
-		),
-		server
+]]
 	)
-	local function buffer(repo)
-		vim.fn.mkdir(directory .. "/" .. repo .. "/.git", "p")
-		local buf = vim.fn.bufadd(directory .. "/" .. repo .. "/test.lua")
-		vim.fn.bufload(buf)
-		vim.bo[buf].filetype = "lua"
-		return buf
-	end
-	local a, b = buffer("a"), buffer("b")
-	local tools = require("config.project-tools")
-	local root_a, root_b = tools.root(a), tools.root(b)
-	check(root_a ~= root_b, "repo roots must be distinct")
-	vim.fn.writefile({ "gitdir: /some/worktree/metadata" }, directory .. "/worktree.git")
-	vim.fn.mkdir(directory .. "/worktree", "p")
-	vim.fn.rename(directory .. "/worktree.git", directory .. "/worktree/.git")
-	local worktree = vim.fn.bufadd(directory .. "/worktree/file.lua")
-	check(tools.root(worktree) == directory .. "/worktree", "Git worktree file detection")
 
-	local captured = {}
-	local lint = require("lint")
-	local original_try_lint = lint.try_lint
-	lint.try_lint = function(names, opts)
-		captured[vim.api.nvim_get_current_buf()] = { names = names, opts = opts }
-	end
-	tools.setup_linters({ lua = { "luacheck" } })
+	local config_a = [[
+return {
+	tools = {
+		fakefmt = { provider = "venv" },
+		testls = { provider = "venv", bin = { "testls-server" } },
+		fakelint = { provider = "system" },
+		misetool = { provider = "mise", version = "1.2.0" },
+		oldtool = { provider = "mise", version = "1.0.0" },
+	},
+	lsp = { "project_test" },
+	format = { lua = { "fakefmt", "trim_whitespace" } },
+	lint = { lua = { "fakelint" } },
+}
+]]
+	local root_a = project("a", config_a)
+	script(root_a .. "/.venv/bin/fakefmt", "sed 's/x/y/'")
+	script(root_a .. "/.venv/bin/testls-server", 'exec python3 "' .. server .. '"')
+	local root_b = project("b")
+	local root_c = project("c", 'return { tools = { ruff = { provider = "pip" } } }')
+	local root_d = project("d", 'return { tools = { stylua = { provider = "mise" } } }')
+
+	vim.cmd.source(vim.fn.getcwd() .. "/nvim/plugin/project-tools.lua")
+	local tools = require("project-tools")
 	local conform = require("conform")
-	conform.setup({
-		formatters_by_ft = tools.setup_formatters({ lua = { "stylua", "trim_whitespace" }, rust = {} }),
-		format_on_save = tools.format_on_save,
-	})
-	vim.lsp.config("project_test", { cmd = { "python3", server }, filetypes = { "lua" }, root_markers = { ".git" } })
-	tools.setup_lsp({ "project_test" })
-	vim.lsp.enable("project_test")
-	wait_for(function()
-		return #vim.lsp.get_clients({ bufnr = a }) == 1 and #vim.lsp.get_clients({ bufnr = b }) == 1
-	end, "both repos should attach")
-	local client_b = vim.lsp.get_clients({ bufnr = b })[1].id
-	local ns = lint.get_namespace("luacheck")
-	vim.diagnostic.set(ns, a, { { lnum = 0, col = 0, message = "old diagnostic" } })
-	tools.lint(a)
-	local stale = captured[a].opts.wrap_linter({
-		name = "luacheck",
-		parser = function()
-			return { { lnum = 0, col = 0, message = "stale result" } }
+	conform.setup({ formatters_by_ft = { ["_"] = tools.formatters }, format_on_save = tools.format_on_save })
+	conform.formatters.fakefmt = { command = "fakefmt", stdin = true }
+	local lint = require("lint")
+	lint.linters.fakelint = {
+		cmd = "fakelint",
+		stdin = true,
+		parser = function(output)
+			return output:match("bad") and { { lnum = 0, col = 0, message = "bad", severity = 1 } } or {}
 		end,
-	})
-	stale.parser.on_chunk("lint output")
-	tools.update(root_a, function(repo)
-		repo.lsp = { project_test = false }
-		repo.linters = { luacheck = false, typos = false }
-		repo.formatters = { lua = {} }
-		repo.autoformat = false
-		repo.lsp_format = false
-	end)
-	wait_for(function()
-		return #vim.lsp.get_clients({ bufnr = a }) == 0
-	end, "disabled repo must detach")
-	check(vim.lsp.get_clients({ bufnr = b })[1].id == client_b, "other repo client must survive")
-	check(#captured[a].names == 0, "disabled linters must not run")
-	check(#vim.diagnostic.get(a, { namespace = ns }) == 0, "disabled diagnostics must clear")
-	check(tools.format_on_save(a) == nil, "autoformat must disable")
-	check(tools.format_on_save(b).lsp_format == "fallback", "other repo formatting must survive")
-	check(#conform.list_formatters(a) == 0, "empty override must disable the whole chain")
-	check(#tools.formatters(b) == 2, "other repo formatter chain must survive")
-	check(conform.formatters_by_ft.lua(a).lsp_format == "never", "manual formatting policy must disable LSP")
-	local published
-	stale.parser.on_done(function(diagnostics)
-		published = diagnostics
-	end, a, root_a)
-	wait_for(function()
-		return published ~= nil
-	end, "pending parser must finish")
-	check(published and #published == 0, "in-flight lint output must not revive diagnostics")
+	}
+	vim.lsp.config("project_test", { cmd = { "testls-server" }, filetypes = { "lua" }, root_markers = { ".git" } })
 
-	-- Drive picker actions without opening windows, exercising the user-facing toggles.
-	local picker_items, choose
-	package.loaded.snacks =
-		{ picker = {
-			select = function(items, _, callback)
-				picker_items, choose = items, callback
-			end,
-		} }
-	local function pick(text, scope)
-		tools.pick(a, scope, true)
-		for _, item in ipairs(picker_items) do
-			if item.text:find(text, 1, true) then
-				choose(item)
-				return
-			end
-		end
-		error("Missing picker item: " .. text)
-	end
-	tools.pick(a)
-	check(#picker_items > 6, "dashboard must show settings and tools together")
-	check(picker_items[1].text:find("Coverage", 1, true), "dashboard must start with the coverage verdict")
-	pick("Autoformat on save")
-	check(tools.format_on_save(a) ~= nil, "autoformat toggle must re-enable")
-	pick("LSP formatting")
-	check(tools.format_policy(a) == "fallback", "LSP formatting toggle must re-enable")
-	pick("luacheck")
-	check(vim.tbl_contains(captured[a].names, "luacheck"), "linter toggle must re-enable")
-	pick("trim_whitespace")
-	pick("stylua")
-	check(vim.deep_equal(tools.formatters(a), { "stylua", "trim_whitespace" }), "restore default pipeline order")
-	local formatter_items = tools.inspect(a).formatters
-	for _, item in ipairs(formatter_items) do
-		if item.name == "trim_whitespace" then
-			item.move(-1)
-		end
-	end
-	check(vim.deep_equal(tools.formatters(a), { "trim_whitespace", "stylua" }), "formatter steps must be reorderable")
-	for _, item in ipairs(tools.inspect(a).formatters) do
-		if item.name == "stylua" then
-			item.move(-1)
-		end
-	end
-	check(vim.deep_equal(tools.formatters(a), { "stylua", "trim_whitespace" }), "restoring order must inherit defaults")
-	pick("project_test")
+	-- Discovery and validation -------------------------------------------------
+	check(tools.find_root(root_a .. "/sub/deeper") == root_a, "nested directories must find the project")
+	check(tools.find_root(root_b) == nil, "a repo without the file is not a project")
+	check(tools.load(root_c).error:find("provider must be one of", 1, true), "unknown providers must be rejected")
+	check(tools.load(root_d).error:find("version is required", 1, true), "mise tools must declare a version")
+
+	local a = open(root_a .. "/sub/test.lua", { "x = 1", "bad" })
+	local b = open(root_b .. "/test.lua")
+	local project_a = tools.get(a)
+	check(project_a and not project_a.error, "project a must load: " .. tostring(project_a and project_a.error))
+	check(tools.get(b) == nil, "project b must have no tools")
+
+	-- Resolution ------------------------------------------------------------------
+	check(tools.resolve(project_a, "fakefmt") == root_a .. "/.venv/bin/fakefmt", "venv executables resolve")
+	check(tools.resolve(project_a, "/elsewhere/fakefmt") == root_a .. "/.venv/bin/fakefmt", "only basenames matter")
+	check(tools.resolve(project_a, "misetool") == mise_bin .. "/misetool", "mise must win over system PATH")
+	check(tools.resolve(project_a, "fakelint") == system_bin .. "/fakelint", "system executables resolve on PATH")
+	check(project_a.tools.oldtool.status == "not installed", "uninstalled mise versions must not be used")
+	check(tools.resolve(project_a, "oldtool") == nil, "uninstalled tools provide nothing")
+	check(tools.resolve(project_a, "python3") == nil, "undeclared executables must not resolve")
+
+	-- LSP --------------------------------------------------------------------------
 	wait_for(function()
 		return #vim.lsp.get_clients({ bufnr = a }) == 1
-	end, "LSP toggle must reattach")
-	check(
-		tools.inspect(a).coverage.headline == "LSP covers formatting + diagnostics",
-		"coverage must explain LSP sufficiency"
-	)
-	check(vim.lsp.get_clients({ bufnr = b })[1].id == client_b, "re-enable must preserve other repo")
+	end, "declared LSP must attach")
+	local client = vim.lsp.get_clients({ bufnr = a })[1]
+	check(client.root_dir == root_a, "LSP must be rooted at the project")
+	vim.wait(200)
+	check(#vim.lsp.get_clients({ bufnr = b }) == 0, "LSP must not attach outside declaring projects")
 
-	local state_file = vim.fn.stdpath("state") .. "/project-tools.json"
-	local saved = vim.json.decode(table.concat(vim.fn.readfile(state_file), "\n"))
-	check(saved[root_a].linters.typos == false, "overrides must persist")
-	saved[root_b] = { autoformat = false }
-	vim.fn.writefile({ vim.json.encode(saved) }, state_file)
-	pick("Clear project overrides")
-	saved = vim.json.decode(table.concat(vim.fn.readfile(state_file), "\n"))
-	check(saved[root_a] == nil, "reset removes overrides")
-	check(saved[root_b].autoformat == false, "writes must preserve other instance's repo state")
-	check(tools.format_on_save(a) ~= nil, "reset restores defaults")
+	-- Formatting -----------------------------------------------------------------------
+	check(tools.format_on_save(b) == nil, "no project means no format on save")
+	check(tools.formatters(b).lsp_format == "never", "no project means no LSP formatting")
+	check(tools.format_on_save(a).timeout_ms == 500, "format on save defaults on")
+	check(tools.formatters(a).lsp_format == "fallback", "lsp_format defaults to fallback")
+	check(tools.formatter_command("trim_whitespace", a) == false, "Lua formatters run no executable")
+	conform.format({ bufnr = a, async = false })
+	check(vim.api.nvim_buf_get_lines(a, 0, 1, false)[1] == "y = 1", "declared formatter must run from the venv")
+	check(#conform.list_formatters(b) == 0, "no formatters outside projects")
 
-	-- Global defaults apply everywhere and project values only override them.
-	tools.inspect(a, "global").settings[1].toggle()
-	check(tools.format_on_save(a) == nil, "global autoformat default must affect the current project")
-	check(tools.format_on_save(b) == nil, "global autoformat default must affect other projects")
-	local project_autoformat = tools.inspect(a).settings[1]
-	check(project_autoformat.source == "global", "project dashboard must identify inherited global values")
-	project_autoformat.toggle()
-	check(tools.format_on_save(a) ~= nil, "project setting must override the global default")
-	check(tools.format_on_save(b) == nil, "project override must not leak to another repository")
-	tools.inspect(a).reset()
-	check(tools.format_on_save(a) == nil, "clearing project settings must restore global inheritance")
-	tools.inspect(a, "global").reset()
-	check(tools.format_on_save(a) ~= nil, "resetting global settings must restore built-in defaults")
-	check(tools.format_on_save(b) == nil, "global reset must preserve repository overrides")
-	local outside_dir = directory .. "/outside"
-	vim.fn.mkdir(outside_dir, "p")
-	local outside = vim.fn.bufadd(outside_dir .. "/test.lua")
-	vim.fn.bufload(outside)
-	vim.bo[outside].filetype = "lua"
-	check(tools.inspect(outside).scope == "global", "files outside Git must edit global defaults")
+	-- Linting --------------------------------------------------------------------------
+	tools.lint(a)
+	wait_for(function()
+		return #vim.diagnostic.get(a, { namespace = lint.get_namespace("fakelint") }) == 1
+	end, "declared linter must run")
 
-	-- Python alternatives are filetype-specific, and availability is not selection.
-	local python = buffer("python")
-	vim.bo[python].filetype = "python"
-	conform.formatters.black = { command = "python3" }
-	conform.formatters.ruff_fix = { command = "python3" }
-	conform.formatters.ruff_format = { command = "project-tools-test-missing-command" }
-	conform.formatters.ruff_organize_imports = { command = "project-tools-test-missing-command" }
-	vim.fn.mkdir(directory .. "/lsp", "p")
-	vim.fn.writefile(
-		{ 'return { cmd = { "python3" }, filetypes = { "python" } }' },
-		directory .. "/lsp/unlisted_python.lua"
-	)
-	vim.opt.rtp:append(directory)
-	lint.linters.flake8 = { cmd = "python3" }
-	lint.linters.ruff = { cmd = "python3" }
-	lint.linters.mypy = { cmd = "project-tools-test-missing-command" }
-	tools.update(tools.root(python), function(repo)
-		repo.formatters = { python = { "ruff_format" } }
-	end)
-	local function find_tool(kind, name)
-		for _, item in ipairs(tools.inspect(python)[kind]) do
-			if item.name == name then
-				return item
-			end
+	-- Reload -----------------------------------------------------------------------------
+	local reduced = config_a:gsub('lsp = { "project_test" },', ""):gsub('lint = { lua = { "fakelint" } },', "")
+	write(root_a .. "/.nvim-tools.lua", reduced)
+	vim.secure.trust({ action = "allow", path = root_a .. "/.nvim-tools.lua" })
+	tools.reload(root_a)
+	wait_for(function()
+		return #vim.lsp.get_clients({ bufnr = a }) == 0
+	end, "removed LSP must detach on reload")
+	check(#vim.diagnostic.get(a, { namespace = lint.get_namespace("fakelint") }) == 0, "removed linter clears")
+
+	-- Edit + health ---------------------------------------------------------------------
+	vim.api.nvim_set_current_buf(b)
+	tools.edit(b)
+	check(vim.uv.fs_stat(root_b .. "/.nvim-tools.lua"), "edit must create the file")
+	local project_b = tools.load(root_b)
+	check(not project_b.error, "template must be valid: " .. tostring(project_b.error))
+	local reported = {}
+	for _, level in ipairs({ "start", "ok", "warn", "error", "info" }) do
+		vim.health[level] = function(message)
+			reported[#reported + 1] = level .. ": " .. message
 		end
-		return nil
 	end
-	check(find_tool("formatters", "black") == nil, "installed but unlisted formatter must be excluded")
-	check(find_tool("formatters", "autopep8") == nil, "unlisted formatter suggestions must be excluded")
-	check(find_tool("linters", "flake8") == nil, "installed but unlisted linter must be excluded")
-	check(find_tool("linters", "mypy") == nil, "unlisted linter suggestions must be excluded")
-	check(find_tool("lsp", "unlisted_python") == nil, "runtime LSP definitions must not bypass tools.lua")
-	local ruff_fix = find_tool("formatters", "ruff_fix")
-	check(ruff_fix.available and not ruff_fix.enabled, "Ruff integration must be allowed by the Ruff tool entry")
-	local ruff = find_tool("formatters", "ruff_format")
-	check(
-		ruff.enabled and not ruff.available and ruff.status == "unavailable",
-		"selected missing formatter must not say ready"
-	)
-	tools.pick(python)
-	local text = vim.iter(picker_items)
-		:map(function(item)
-			return item.text
-		end)
-		:join("\n")
-	check(text:find("ruff_format", 1, true), "selected unavailable tools must remain visible")
-	check(text:find("ruff_fix", 1, true), "listed relevant alternatives must be visible")
-	check(not text:find("black", 1, true), "unlisted formatter must not appear in picker")
-	check(not text:find("Browse all", 1, true), "picker must not offer an unrestricted catalog")
-	check(not text:find("stylua", 1, true), "unrelated formatters must be excluded")
-	check(text:find("Show unavailable tools", 1, true), "missing alternatives must be collapsed")
-	local ruff_lint = find_tool("linters", "ruff")
-	check(ruff_lint.available and not ruff_lint.enabled, "listed alternative linter starts disabled")
-	ruff_lint.toggle()
-	check(vim.tbl_contains(captured[python].names, "ruff"), "enabling an alternative linter must run it")
-	local ruff_ns = lint.get_namespace("ruff")
-	vim.diagnostic.set(ruff_ns, python, { { lnum = 0, col = 0, message = "old alternative linter diagnostic" } })
-	find_tool("linters", "ruff").toggle()
-	check(not vim.tbl_contains(captured[python].names, "ruff"), "disabling an alternative must stop reruns")
-	check(#vim.diagnostic.get(python, { namespace = ruff_ns }) == 0, "alternative linter diagnostics must clear")
-	configured_tools.lint[#configured_tools.lint + 1] = "mypy"
-	check(find_tool("linters", "mypy") ~= nil, "adding a tool to tools.lua must make its integration eligible")
-	table.remove(configured_tools.lint)
-	local lsp = tools.inspect(b).lsp[1]
-	check(lsp.running and lsp.status == "running", "attached client must report actual running state")
-	-- Exercise the real Snacks layout and highlighted format callback as well.
-	package.loaded.snacks = nil
-	local snacks = require("snacks")
-	snacks.setup({ picker = { enabled = true } })
-	tools.pick(python)
-	wait_for(function()
-		return #snacks.picker.get() == 1
-	end, "real dashboard picker must open")
-	local picker = snacks.picker.get()[1]
-	wait_for(function()
-		return picker:count() > 6
-	end, "real dashboard must render all tool categories")
-	picker.input:set("Autoformat")
-	picker:find()
-	wait_for(function()
-		return picker.list:count() == 1
-	end, "dashboard filtering must find settings")
-	local autoformat_before = tools.autoformat(python)
-	picker:action("confirm")
-	wait_for(function()
-		return tools.autoformat(python) ~= autoformat_before and not picker.closed and picker.list:count() == 1
-	end, "toggle must refresh the dashboard in place")
-	picker:action("confirm")
-	wait_for(function()
-		return tools.autoformat(python) == autoformat_before
-	end, "second toggle must restore the inherited value")
-	picker:close()
-	package.loaded["config.project-tools"] = nil
-	check(require("config.project-tools").format_on_save(b) == nil, "fresh module must load persisted state")
-	lint.try_lint = original_try_lint
+	require("project-tools.health").check()
+	local text = table.concat(reported, "\n")
+	check(text:find("oldtool (mise 1.0.0): not installed", 1, true), "health must report missing versions")
+	check(text:find("format lua fakefmt → " .. root_a, 1, true), "health must report resolved formatters")
 end
 
 local ok, err = xpcall(run, debug.traceback)
 for _, client in ipairs(vim.lsp.get_clients()) do
 	client:stop(true)
 end
-vim.wait(1000, function()
-	return #vim.lsp.get_clients() == 0
-end)
 vim.fn.delete(directory, "rf")
 if not ok then
-	error(err)
+	io.stderr:write(err .. "\n")
+	os.exit(1)
 end
 print("project-tools: all checks passed")

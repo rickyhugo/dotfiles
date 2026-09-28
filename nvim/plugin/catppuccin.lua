@@ -13,7 +13,6 @@ require("catppuccin").setup({
 	integrations = {
 		which_key = true,
 		lsp_saga = true,
-		mason = true,
 		nvimtree = false,
 		harpoon = true,
 		blink_cmp = true,
