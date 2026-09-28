@@ -18,6 +18,12 @@ vim.api.nvim_create_autocmd("FileType", {
 			return
 		end
 
+		-- A parser without highlight queries (e.g. one nvim-treesitter dropped, like
+		-- tmux) would highlight nothing; keep Vim's regex syntax instead.
+		if #vim.treesitter.query.get_files(language, "highlights") == 0 then
+			return
+		end
+
 		-- enables syntax highlighting and other treesitter features
 		vim.treesitter.start(buf, language)
 
