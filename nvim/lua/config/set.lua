@@ -91,3 +91,6 @@ end, { nargs = "*" })
 vim.api.nvim_create_user_command("LspInfo", function()
 	vim.cmd("checkhealth vim.lsp")
 end, {})
+
+-- btop themes are key=value config, not PHP.
+vim.filetype.add({ pattern = { [".*/btop/themes/.*%.theme"] = "conf" } })
