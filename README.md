@@ -31,6 +31,8 @@ return {
 	},
 	format_on_save = true, -- default
 	lsp_format = "fallback", -- default: never | fallback | prefer | first | last
+	-- Files whose changes restart this project's tools (relative to its root).
+	restart_on = { "mise.local.toml", ".python-version" },
 	-- Extra server settings for this project, merged over nvim/lua/config/lsp-config.lua.
 	settings = {
 		basedpyright = { basedpyright = { analysis = { typeCheckingMode = "strict" } } },
@@ -45,6 +47,8 @@ How a project combines with the global base:
   two formatter chains never run on one file.
 - `format_on_save` and `lsp_format` set in the project win.
 - `settings` are deep-merged per server; the project's values win.
+- `restart_on` adds up. Global entries count in every project, relative to its
+  root; outside projects they are relative to home.
 - A project file with an error still gets the global base.
 
 Executables come from `$PATH`; the plugin knows nothing about where they come
@@ -70,11 +74,14 @@ Missing tools are reported by the tools themselves: conform says the formatter
 is unavailable, Neovim's LSP client says the server failed to start, and a
 linter that isn't on `$PATH` warns once.
 
-Changing `~/.nvim-tools.lua` restarts the tools of every buffer. Changing
-`.nvim-tools.lua` or the project's mise config (`mise.local.toml`,
-`mise.toml`, `.mise.toml`, `.tool-versions`) reloads the project: servers
-restart, so they pick up new versions, and diagnostics refresh. Deleting
-`.nvim-tools.lua` unloads the project.
+Changing `~/.nvim-tools.lua` restarts the tools of every buffer; changing a
+project's `.nvim-tools.lua` restarts its buffers' tools, and deleting it unloads
+the project. Files listed in `restart_on` do the same, so servers pick up new
+versions: shims resolve a server's version once, when it starts. The plugin
+itself watches nothing else, so put your version manager's files there, e.g.
+`mise.toml`, `mise.local.toml` and `.config/mise/config.toml` (relative to home)
+in `~/.nvim-tools.lua`. Edits from anywhere apply: Neovim, another editor,
+`git checkout`, `mise use`.
 
 `.nvim-tools.lua` runs with an empty environment, so it can only name tools,
 not run code. It isn't checked against Neovim's `:trust` list, so edits from

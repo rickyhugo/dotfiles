@@ -6,9 +6,6 @@ local M = {}
 
 M.file = ".nvim-tools.lua"
 M.mise_file = "mise.local.toml"
--- Changes restart the project's tools: LSP servers keep the version their shim
--- resolved at start, so a new pin in the mise config needs a restart.
-local watched = { M.file, M.mise_file, "mise.toml", ".mise.toml", ".mise.local.toml", ".tool-versions" }
 local lsp_formats = { never = true, fallback = true, prefer = true, first = true, last = true }
 
 local projects = {} -- root -> project
@@ -16,7 +13,8 @@ local global -- { path, source, config?, error? } for ~/.nvim-tools.lua
 local outside -- effective setup for buffers outside any project
 local roots = {} -- directory -> root|false
 local wrapped = {} -- lsp names gated by project
-local watchers = {} -- root -> fs_event on the project directory
+local watchers = {} -- directory -> fs_event
+local interesting = {} -- directory -> { basename = true } for restart_on files
 local warned = {}
 
 local function warn_once(key, message)
@@ -84,11 +82,20 @@ end
 local function validate(config)
 	check(type(config) == "table", "must return a table")
 	check(config.tools == nil, "tools are not declared here; pin versions in " .. M.mise_file)
-	local known = { lsp = true, format = true, lint = true, format_on_save = true, lsp_format = true, settings = true }
+	local known = {
+		lsp = true,
+		format = true,
+		lint = true,
+		format_on_save = true,
+		lsp_format = true,
+		settings = true,
+		restart_on = true,
+	}
 	for key in pairs(config) do
 		check(known[key], "unknown key '" .. tostring(key) .. "'")
 	end
 	check(config.lsp == nil or list_of_strings(config.lsp), "lsp must be a list of lsp config names")
+	check(config.restart_on == nil or list_of_strings(config.restart_on), "restart_on must be a list of paths")
 	check(config.settings == nil or type(config.settings) == "table", "settings must be a table keyed by lsp name")
 	for name, settings in pairs(config.settings or {}) do
 		check(
@@ -126,15 +133,6 @@ local function source(path)
 	local contents = file:read("*a")
 	file:close()
 	return contents
-end
-
--- Watched files, to tell real changes from events that change nothing.
-local function sources(root)
-	local parts = {}
-	for _, name in ipairs(watched) do
-		parts[#parts + 1] = name .. "\0" .. (source(root .. "/" .. name) or "")
-	end
-	return table.concat(parts, "\0")
 end
 
 local function read(path)
@@ -195,6 +193,7 @@ local function merge(base, own)
 		lsp_format = setting("lsp_format", "fallback"),
 		-- Per server, deep-merged: the project's values win.
 		settings = vim.tbl_deep_extend("force", base.settings or {}, own.settings or {}),
+		restart_on = union(base.restart_on, own.restart_on),
 	}
 end
 
@@ -209,7 +208,18 @@ local function apply(target, config)
 	target.format_on_save = config.format_on_save
 	target.lsp_format = config.lsp_format
 	target.settings = config.settings
+	target.restart_on = config.restart_on
 	return target
+end
+
+-- Contents of base/.nvim-tools.lua and each restart_on path (relative to base),
+-- to tell real changes from events that change nothing.
+local function sources(base, restart_on)
+	local parts = {}
+	for _, name in ipairs(union({ M.file }, restart_on)) do
+		parts[#parts + 1] = name .. "\0" .. (source(base .. "/" .. name) or "")
+	end
+	return table.concat(parts, "\0")
 end
 
 local enable_lsp, watch
@@ -217,8 +227,8 @@ local enable_lsp, watch
 local function load_global()
 	if not global then
 		local path = M.global_path()
-		global = { path = path, source = source(path) }
-		if global.source then
+		global = { path = path }
+		if source(path) then
 			local ok, config = pcall(read, path)
 			if ok then
 				global.config = config
@@ -227,11 +237,10 @@ local function load_global()
 				warn_once("error:global", path .. ": " .. config)
 			end
 		end
-		watch(home(), { M.file }, function()
-			return (global and global.source) ~= source(M.global_path())
-		end, function()
-			M.reload_global()
-		end)
+		-- Outside projects, restart_on paths are relative to home.
+		global.restart_on = global.config and global.config.restart_on or {}
+		global.source = sources(home(), global.restart_on)
+		watch(home(), global.restart_on)
 	end
 	return global
 end
@@ -243,7 +252,7 @@ end
 
 local function load_project(root)
 	local path = root .. "/" .. M.file
-	local project = { root = root, path = path, source = sources(root) }
+	local project = { root = root, path = path }
 	local ok, config = pcall(read, path)
 	if not ok then
 		-- A broken project file still gets the global base.
@@ -251,7 +260,10 @@ local function load_project(root)
 		warn_once("error:" .. root, M.file .. " in " .. root .. ": " .. config)
 		config = nil
 	end
-	return apply(project, merge(load_global().config, config))
+	apply(project, merge(load_global().config, config))
+	-- Global restart_on paths count here too, relative to this project's root.
+	project.source = sources(root, project.restart_on)
+	return project
 end
 
 --- Effective setup for a buffer: its project merged over the global base, the
@@ -269,11 +281,7 @@ function M.load(root)
 	if not projects[root] then
 		local project = load_project(root)
 		projects[root] = project
-		watch(root, watched, function()
-			return (projects[root] and projects[root].source) ~= sources(root)
-		end, function()
-			M.reload(root)
-		end)
+		watch(root, project.restart_on)
 		for _, name in ipairs(project.lsp_names) do
 			enable_lsp(name)
 		end
@@ -305,6 +313,7 @@ function M.effective(bufnr)
 		format_on_save = project.format_on_save,
 		lsp_format = project.lsp_format,
 		settings = vim.deepcopy(project.settings),
+		restart_on = vim.deepcopy(project.restart_on),
 	}
 end
 
@@ -538,36 +547,50 @@ function M.changed(path)
 	end
 end
 
--- Reload when a watched file changes outside Neovim (another editor, git
--- checkout, `mise use`). The directory is watched because editors often replace
--- files on save; `stale` filters out events that change nothing.
-watch = function(dir, names, stale, reload)
-	if watchers[dir] then
-		return
+-- Reload whatever changed: the global base restarts everything, a project only
+-- its own buffers. Comparing contents skips events that change nothing.
+local function check()
+	if global and global.source ~= sources(home(), global.restart_on) then
+		return M.reload_global()
 	end
-	local watcher, timer = vim.uv.new_fs_event(), vim.uv.new_timer()
-	if not watcher or not timer then
-		return
-	end
-	watchers[dir] = watcher
-	watcher:start(dir, {}, function(err, filename)
-		if err or (filename and not vim.tbl_contains(names, vim.fs.basename(filename))) then
-			return
+	for _, root in ipairs(vim.tbl_keys(projects)) do
+		local project = projects[root]
+		if project and project.source ~= sources(root, project.restart_on) then
+			M.reload(root)
 		end
-		timer:stop()
-		timer:start(200, 0, function()
-			vim.schedule(function()
-				if stale() then
-					reload()
+	end
+end
+
+local timer
+
+-- Watch the folders holding base/.nvim-tools.lua and each restart_on path, so
+-- edits from anywhere (another editor, git checkout, `mise use`) apply. Folders,
+-- not files, because editors often replace files on save.
+watch = function(base, restart_on)
+	for _, name in ipairs(union({ M.file }, restart_on)) do
+		local path = vim.fs.normalize(base .. "/" .. name)
+		local dir = vim.fs.dirname(path)
+		interesting[dir] = interesting[dir] or {}
+		interesting[dir][vim.fs.basename(path)] = true
+		local watcher = not watchers[dir] and vim.uv.fs_stat(dir) and vim.uv.new_fs_event()
+		if watcher then
+			watchers[dir] = watcher
+			watcher:start(dir, {}, function(err, filename)
+				if err or (filename and not interesting[dir][vim.fs.basename(filename)]) then
+					return
 				end
+				timer = timer or vim.uv.new_timer()
+				timer:stop()
+				timer:start(200, 0, vim.schedule_wrap(check))
 			end)
-		end)
-	end)
+		end
+	end
 end
 
 local template = [[
 -- Editor tools for this project, added to the global ~/.nvim-tools.lua.
 -- Executables come from $PATH: pin them in mise.local.toml ([tools]).
+-- restart_on: files (relative to this folder) whose changes restart the tools.
 return {
 	lsp = {
 		-- "lua_ls",
@@ -595,6 +618,9 @@ return {
 	lint = {
 		-- ["*"] = { "typos" },
 	},
+	-- Files whose changes restart tools: relative to each project root, or to
+	-- home for buffers outside projects.
+	-- restart_on = { "mise.toml", "mise.local.toml", ".config/mise/config.toml" },
 }
 ]]
 

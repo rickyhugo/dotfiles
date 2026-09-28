@@ -105,9 +105,11 @@ return {
 	format = { lua = { "fakefmt", "trim_whitespace" } },
 	lint = { lua = { "fakelint", "ghostlint" } },
 	settings = { project_test = { nested = { value = 1 } } },
+	restart_on = { "mise.local.toml", "conf/tool.toml" },
 }
 ]]
 	local root_a = project("a", config_a)
+	vim.fn.mkdir(root_a .. "/conf", "p")
 	local root_b = project("b", nil, false)
 	local root_c = project("c", 'return { tools = { ruff = { provider = "venv" } } }')
 	local root_d = project("d", "return { lsp = {} }", false)
@@ -180,6 +182,18 @@ return {
 		return client and client.id ~= client_id
 	end, "a mise.local.toml change must restart LSP servers")
 
+	client_id = vim.lsp.get_clients({ bufnr = a })[1].id
+	write(root_a .. "/conf/tool.toml", "x = 1")
+	wait_for(function()
+		local client = vim.lsp.get_clients({ bufnr = a })[1]
+		return client and client.id ~= client_id
+	end, "restart_on paths in subfolders restart LSP servers too")
+
+	client_id = vim.lsp.get_clients({ bufnr = a })[1].id
+	write(root_a .. "/mise.toml", "[tools]")
+	vim.wait(600)
+	check(vim.lsp.get_clients({ bufnr = a })[1].id == client_id, "files not in restart_on don't restart anything")
+
 	local reduced =
 		config_a:gsub('lsp = { "project_test" },', ""):gsub('lint = { lua = { "fakelint", "ghostlint" } },', "")
 	-- An outside edit applies directly: no reload call, no trust prompt.
@@ -202,6 +216,7 @@ return {
 		[[
 return {
 	format = { ["*"] = { "trim_whitespace" }, lua = { "trim_newlines" } },
+	restart_on = { ".python-version" },
 	settings = { project_test = { nested = { value = 0, global_only = true } } },
 	lint = { ["*"] = { "fakelint" } },
 	format_on_save = false,
@@ -234,6 +249,7 @@ return {
 		"a project's filetype formatters replace the global ones; '*' still applies"
 	)
 	check(tools.format_on_save(e) ~= nil, "project settings win over global ones")
+	check(vim.tbl_contains(tools.effective(e).restart_on, ".python-version"), "global restart_on applies in projects")
 	check(
 		vim.deep_equal(tools.effective(e).settings.project_test, { nested = { value = 0, global_only = true } }),
 		"server settings come from the global base when the project has none"
