@@ -152,6 +152,21 @@ return {
 	vim.wait(200)
 	check(#vim.lsp.get_clients({ bufnr = b }) == 0, "LSP must not attach outside declaring projects")
 
+	-- A nested project gets its own server, rooted at it, with its own settings,
+	-- although the only .git is higher up.
+	write(
+		root_a .. "/nested/.nvim-tools.lua",
+		'return { lsp = { "project_test" }, settings = { project_test = { nested = { value = 2 } } } }'
+	)
+	local nested = open(root_a .. "/nested/test.lua")
+	wait_for(function()
+		return #vim.lsp.get_clients({ bufnr = nested }) == 1
+	end, "a nested project's server must attach")
+	local nested_client = vim.lsp.get_clients({ bufnr = nested })[1]
+	check(nested_client.root_dir == root_a .. "/nested", "a nested project's server is rooted at it")
+	check(vim.tbl_get(nested_client.settings, "nested", "value") == 2, "a nested project's settings reach its server")
+	check(nested_client.id ~= vim.lsp.get_clients({ bufnr = a })[1].id, "nested projects don't share servers")
+
 	-- Formatting -----------------------------------------------------------------------
 	check(tools.format_on_save(b) == nil, "no project means no format on save")
 	check(tools.formatters(b).lsp_format == "never", "no project means no LSP formatting")
@@ -264,6 +279,20 @@ return {
 	vim.bo[e].filetype = "lua.special"
 	check(tools.formatters(e)[1] == "fakefmt", "dotted filetypes use the formatters of their first part")
 	vim.bo[e].filetype = "lua"
+
+	-- Health with the global base loaded and servers running must not fail.
+	local global_report = {}
+	local health = vim.health
+	vim.health = setmetatable({}, {
+		__index = function(_, level)
+			return function(message)
+				global_report[#global_report + 1] = level .. ": " .. message
+			end
+		end,
+	})
+	local health_ok, health_err = pcall(require("project-tools.health").check)
+	vim.health = health
+	check(health_ok, "health with the global base must not fail: " .. tostring(health_err))
 
 	vim.api.nvim_set_current_buf(e)
 	tools.show()

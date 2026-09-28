@@ -24,9 +24,12 @@ function M.report(project, source)
 		if not config then
 			vim.health.error("lsp " .. name .. ": unknown LSP config")
 		else
-			local running = #vim.tbl_filter(function(client)
-				return client.root_dir ~= nil and vim.startswith(client.root_dir .. "/", project.root .. "/")
-			end, vim.lsp.get_clients({ name = name }))
+			-- Running is per project root; the global section has none.
+			local running = project.root
+					and #vim.tbl_filter(function(client)
+						return client.root_dir ~= nil and vim.startswith(client.root_dir .. "/", project.root .. "/")
+					end, vim.lsp.get_clients({ name = name }))
+				or 0
 			local cmd = type(config.cmd) == "table" and config.cmd[1] or nil
 			report_executable("lsp " .. name .. (running > 0 and " [running]" or ""), cmd)
 		end

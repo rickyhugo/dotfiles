@@ -51,10 +51,12 @@ How a project combines with the global base:
   root; outside projects they are relative to home. Paths starting with `~/` or
   `/` are exact files, e.g. `~/.config/mise/config.toml` for every buffer.
 - A project file with an error still gets the global base.
+- A project's LSP servers are rooted inside it, even when root markers like
+  `.git` sit higher up, so nested projects get their own servers and settings.
 
 Executables come from `$PATH`; the plugin knows nothing about where they come
-from. Pin versions in `mise.local.toml` next to it (a warning is shown when it
-is missing):
+from. Pin versions in `mise.local.toml` next to it, or in your global mise
+config for tools every project uses:
 
 ```toml
 [tools]

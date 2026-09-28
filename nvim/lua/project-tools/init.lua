@@ -386,11 +386,19 @@ enable_lsp = function(name)
 				if not (project and project.lsp[name]) then
 					return
 				end
+				-- Keep a project's server inside the project, even when root markers
+				-- like .git sit higher up: its settings are looked up from this root,
+				-- and a nested project must not share its parent's server.
+				local function accept(root)
+					if project.root and (not root or not contains(project.root, realpath(root))) then
+						root = project.root
+					end
+					on_dir(root)
+				end
 				if type(root_dir) == "function" then
-					root_dir(bufnr, on_dir)
+					root_dir(bufnr, accept)
 				else
-					-- nil keeps Neovim's root_markers handling.
-					on_dir(root_dir)
+					accept(root_dir or (config.root_markers and vim.fs.root(bufnr, config.root_markers)))
 				end
 			end,
 		})
