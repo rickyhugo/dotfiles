@@ -48,7 +48,8 @@ How a project combines with the global base:
 - `format_on_save` and `lsp_format` set in the project win.
 - `settings` are deep-merged per server; the project's values win.
 - `restart_on` adds up. Global entries count in every project, relative to its
-  root; outside projects they are relative to home.
+  root; outside projects they are relative to home. Paths starting with `~/` or
+  `/` are exact files, e.g. `~/.config/mise/config.toml` for every buffer.
 - A project file with an error still gets the global base.
 
 Executables come from `$PATH`; the plugin knows nothing about where they come
@@ -79,8 +80,8 @@ project's `.nvim-tools.lua` restarts its buffers' tools, and deleting it unloads
 the project. Files listed in `restart_on` do the same, so servers pick up new
 versions: shims resolve a server's version once, when it starts. The plugin
 itself watches nothing else, so put your version manager's files there, e.g.
-`mise.toml`, `mise.local.toml` and `.config/mise/config.toml` (relative to home)
-in `~/.nvim-tools.lua`. Edits from anywhere apply: Neovim, another editor,
+`mise.toml`, `mise.local.toml` and `~/.config/mise/config.toml` in
+`~/.nvim-tools.lua`. Edits from anywhere apply: Neovim, another editor,
 `git checkout`, `mise use`.
 
 `.nvim-tools.lua` runs with an empty environment, so it can only name tools,

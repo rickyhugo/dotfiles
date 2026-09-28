@@ -105,7 +105,7 @@ return {
 	format = { lua = { "fakefmt", "trim_whitespace" } },
 	lint = { lua = { "fakelint", "ghostlint" } },
 	settings = { project_test = { nested = { value = 1 } } },
-	restart_on = { "mise.local.toml", "conf/tool.toml" },
+	restart_on = { "mise.local.toml", "conf/tool.toml", "~/shared.toml" },
 }
 ]]
 	local root_a = project("a", config_a)
@@ -188,6 +188,13 @@ return {
 		local client = vim.lsp.get_clients({ bufnr = a })[1]
 		return client and client.id ~= client_id
 	end, "restart_on paths in subfolders restart LSP servers too")
+
+	client_id = vim.lsp.get_clients({ bufnr = a })[1].id
+	write(home .. "/shared.toml", "x = 1")
+	wait_for(function()
+		local client = vim.lsp.get_clients({ bufnr = a })[1]
+		return client and client.id ~= client_id
+	end, "~ paths in restart_on are exact files")
 
 	client_id = vim.lsp.get_clients({ bufnr = a })[1].id
 	write(root_a .. "/mise.toml", "[tools]")

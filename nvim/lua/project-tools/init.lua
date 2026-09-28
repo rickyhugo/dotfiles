@@ -212,12 +212,21 @@ local function apply(target, config)
 	return target
 end
 
--- Contents of base/.nvim-tools.lua and each restart_on path (relative to base),
--- to tell real changes from events that change nothing.
+-- A restart_on entry: "~/..." and "/..." are that exact file, anything else is
+-- relative to base (a project root, or home outside projects).
+local function resolve(base, name)
+	if name:match("^[~/]") then
+		return vim.fs.normalize(name)
+	end
+	return vim.fs.normalize(base .. "/" .. name)
+end
+
+-- Contents of base/.nvim-tools.lua and each restart_on file, to tell real
+-- changes from events that change nothing.
 local function sources(base, restart_on)
 	local parts = {}
 	for _, name in ipairs(union({ M.file }, restart_on)) do
-		parts[#parts + 1] = name .. "\0" .. (source(base .. "/" .. name) or "")
+		parts[#parts + 1] = name .. "\0" .. (source(resolve(base, name)) or "")
 	end
 	return table.concat(parts, "\0")
 end
@@ -568,7 +577,7 @@ local timer
 -- not files, because editors often replace files on save.
 watch = function(base, restart_on)
 	for _, name in ipairs(union({ M.file }, restart_on)) do
-		local path = vim.fs.normalize(base .. "/" .. name)
+		local path = resolve(base, name)
 		local dir = vim.fs.dirname(path)
 		interesting[dir] = interesting[dir] or {}
 		interesting[dir][vim.fs.basename(path)] = true
@@ -618,9 +627,9 @@ return {
 	lint = {
 		-- ["*"] = { "typos" },
 	},
-	-- Files whose changes restart tools: relative to each project root, or to
-	-- home for buffers outside projects.
-	-- restart_on = { "mise.toml", "mise.local.toml", ".config/mise/config.toml" },
+	-- Files whose changes restart tools: relative to each project root (or home
+	-- outside projects); "~/..." and "/..." are exact files.
+	-- restart_on = { "mise.toml", "mise.local.toml", "~/.config/mise/config.toml" },
 }
 ]]
 
