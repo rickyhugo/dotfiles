@@ -1,25 +1,69 @@
 local M = {}
 
-local function report_command(tools, project, label, command)
-	if not command then
-		return vim.health.error(label .. ": unknown")
-	end
-	local path, err, providers = tools.resolve(project, command)
-	if not path then
-		return vim.health.error(label .. ": " .. err)
-	end
-	local message = label .. " → " .. path .. " (" .. providers[1] .. ")"
-	if #providers > 1 then
-		vim.health.warn(message, "Also provided by " .. table.concat(providers, ", ", 2) .. "; add `bin` to narrow")
-	else
-		vim.health.ok(message)
-	end
-end
-
 local function sorted_keys(value)
 	local keys = vim.tbl_keys(value)
 	table.sort(keys)
 	return keys
+end
+
+local function report_executable(label, command)
+	if type(command) ~= "string" then
+		return vim.health.info(label .. " (command resolved when it starts)")
+	end
+	local path = vim.fn.exepath(command)
+	if path ~= "" then
+		vim.health.ok(label .. " → " .. path)
+	else
+		vim.health.error(label .. ": " .. command .. " not found on $PATH", "Add it to mise.local.toml")
+	end
+end
+
+function M.report(project, source)
+	for _, name in ipairs(project.lsp_names) do
+		local config = vim.lsp.config[name]
+		if not config then
+			vim.health.error("lsp " .. name .. ": unknown LSP config")
+		else
+			local running = #vim.tbl_filter(function(client)
+				return client.root_dir ~= nil and vim.startswith(client.root_dir .. "/", project.root .. "/")
+			end, vim.lsp.get_clients({ name = name }))
+			local cmd = type(config.cmd) == "table" and config.cmd[1] or nil
+			report_executable("lsp " .. name .. (running > 0 and " [running]" or ""), cmd)
+		end
+	end
+
+	local conform_ok, conform = pcall(require, "conform")
+	for _, ft in ipairs(sorted_keys(project.format)) do
+		for _, name in ipairs(project.format[ft]) do
+			local label = "format " .. ft .. " " .. name
+			local info = conform_ok and conform.get_formatter_info(name, source) or nil
+			if not info then
+				vim.health.warn(label .. ": conform is not loaded")
+			elseif info.available then
+				local path = info.command and vim.fn.exepath(info.command)
+				vim.health.ok(label .. (info.command and (" → " .. (path ~= "" and path or info.command)) or ""))
+			else
+				vim.health.error(label .. ": " .. (info.available_msg or "unavailable"), "Add it to mise.local.toml")
+			end
+		end
+	end
+
+	local lint_ok, lint = pcall(require, "lint")
+	for _, ft in ipairs(sorted_keys(project.lint)) do
+		for _, name in ipairs(project.lint[ft]) do
+			local label = "lint " .. ft .. " " .. name
+			local linter = lint_ok and lint.linters[name]
+			if not linter then
+				vim.health.error(label .. ": unknown linter")
+			else
+				local ok, command = pcall(vim.api.nvim_buf_call, source, function()
+					linter = type(linter) == "function" and linter() or linter
+					return type(linter.cmd) == "function" and linter.cmd() or linter.cmd
+				end)
+				report_executable(label, ok and command or nil)
+			end
+		end
+	end
 end
 
 function M.check()
@@ -37,54 +81,13 @@ function M.check()
 	for _, root in ipairs(sorted_keys(projects)) do
 		local project = projects[root]
 		vim.health.start("project-tools: " .. vim.fn.fnamemodify(root, ":~"))
+		if not vim.uv.fs_stat(root .. "/" .. tools.mise_file) then
+			vim.health.warn("no " .. tools.mise_file .. "; tools come from whatever $PATH has")
+		end
 		if project.error then
 			vim.health.error(project.error, "Fix " .. project.path .. " then save it")
 		else
-			M.report(tools, project, source)
-		end
-	end
-end
-
-function M.report(tools, project, source)
-	local root = project.root
-
-	for name, tool in vim.spairs(project.tools) do
-		local label = name .. " (" .. tool.provider .. (tool.version and (" " .. tool.version) or "") .. ")"
-		if tool.status == "ok" then
-			vim.health.ok(label .. ": " .. table.concat(sorted_keys(tool.bins), ", "))
-		elseif tool.status == "not installed" then
-			vim.health.error(label .. ": " .. tool.status, "Run :ProjectTools install")
-		else
-			vim.health.error(label .. ": " .. tool.status)
-		end
-	end
-
-	for _, name in ipairs(project.lsp_names) do
-		local running = #vim.tbl_filter(function(client)
-			return client.root_dir ~= nil and vim.startswith(client.root_dir .. "/", root .. "/")
-		end, vim.lsp.get_clients({ name = name }))
-		report_command(
-			tools,
-			project,
-			"lsp " .. name .. (running > 0 and " [running]" or ""),
-			tools.lsp_command(name, root)
-		)
-	end
-
-	for _, ft in ipairs(sorted_keys(project.format)) do
-		for _, name in ipairs(project.format[ft]) do
-			local command = tools.formatter_command(name, source)
-			if command == false then
-				vim.health.ok("format " .. ft .. " " .. name .. " (built into conform)")
-			else
-				report_command(tools, project, "format " .. ft .. " " .. name, command)
-			end
-		end
-	end
-
-	for _, ft in ipairs(sorted_keys(project.lint)) do
-		for _, name in ipairs(project.lint[ft]) do
-			report_command(tools, project, "lint " .. ft .. " " .. name, tools.linter_command(name, source))
+			M.report(project, source)
 		end
 	end
 end

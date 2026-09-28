@@ -6,4 +6,8 @@ require("conform").setup({
 	-- Everything comes from .nvim-tools.lua; "_" covers every filetype.
 	formatters_by_ft = { ["_"] = project_tools.formatters },
 	format_on_save = project_tools.format_on_save,
+	formatters = {
+		-- dockerfmt drops the final newline unless asked to keep it.
+		dockerfmt = { prepend_args = { "--newline" } },
+	},
 })

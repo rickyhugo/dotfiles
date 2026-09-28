@@ -7,9 +7,6 @@ local commands = {
 	edit = function()
 		tools.edit()
 	end,
-	install = function()
-		tools.install()
-	end,
 	reload = function()
 		tools.reload_all()
 	end,
@@ -26,7 +23,7 @@ end, {
 	complete = function()
 		return vim.tbl_keys(commands)
 	end,
-	desc = "Project tools from .nvim-tools.lua (health|edit|install|reload)",
+	desc = "Project tools from .nvim-tools.lua (health|edit|reload)",
 })
 
 vim.keymap.set("n", "<leader>ct", "<cmd>ProjectTools<cr>", { desc = "Project tools health" })

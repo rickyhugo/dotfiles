@@ -1,2 +1,2 @@
--- Server configs only; executables come from .nvim-tools.lua (:ProjectTools install).
+-- Server configs only; .nvim-tools.lua picks which run, $PATH provides them.
 vim.pack.add({ "https://github.com/neovim/nvim-lspconfig" })

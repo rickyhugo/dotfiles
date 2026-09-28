@@ -12,30 +12,19 @@ MISE_ENV=work ./scripts/bootstrap_macos.sh          # macOS
 
 ## Neovim project tools
 
-Each project declares its editor tools in a `.nvim-tools.lua` file at its root
-(ignored through `~/.global.gitignore`). The nearest such file above a buffer
-decides which tools it gets. **Without that file, nothing runs:** no LSP,
-formatter or linter.
+A project declares which LSP servers, formatters and linters run in
+`.nvim-tools.lua` at its root. **Without that file, nothing runs.** The nearest
+`.nvim-tools.lua` above a buffer decides.
 
 ```lua
 return {
-	-- Packages that provide executables; mise tools use mise's own names.
-	tools = {
-		["lua-language-server"] = { provider = "mise", version = "3.19.1" },
-		["npm:bash-language-server"] = { provider = "mise", version = "5.8.0" },
-		stylua = { provider = "mise", version = "2.5.2" },
-		ruff = { provider = "venv" },
-		basedpyright = { provider = "venv", bin = { "basedpyright-langserver" } },
-		rustfmt = { provider = "system" },
-	},
-	lsp = { "lua_ls", "basedpyright" }, -- vim.lsp.config names
+	lsp = { "lua_ls", "bashls" }, -- vim.lsp.config names
 	format = { -- conform formatters_by_ft syntax, run in order
 		lua = { "stylua" },
-		python = { "ruff_organize_imports", "ruff_format" },
 		rust = { lsp_format = "prefer" },
 	},
 	lint = { -- nvim-lint names; "*" applies to every filetype
-		python = { "ruff" },
+		sh = { "shellcheck" },
 		["*"] = { "typos" },
 	},
 	format_on_save = true, -- default
@@ -43,39 +32,45 @@ return {
 }
 ```
 
-Providers:
+Executables come from `$PATH`; the plugin knows nothing about where they come
+from. Pin versions in `mise.local.toml` next to it (a warning is shown when it
+is missing):
 
-| provider | executables from                          | version                         |
-| -------- | ----------------------------------------- | ------------------------------- |
-| `mise`   | `mise bin-paths <tool>@<version>`         | required (`"latest"` allowed)   |
-| `venv`   | `<root>/.venv/bin`                        | from the project's lockfile     |
-| `node`   | `<root>/node_modules/.bin`                | from the project's lockfile     |
-| `system` | `$PATH`                                   | whatever is installed           |
+```toml
+[tools]
+lua-language-server = "latest"
+stylua = "latest"
+"npm:bash-language-server" = "latest" # any backend: npm:, pipx:, go:, github:
+```
 
-mise is the default choice: it keeps every version side by side, so pins never
-clash between projects. Tools outside its registry use a backend, e.g.
-`npm:yaml-language-server`, `pipx:basedpyright`, `go:golang.org/x/tools/gopls`
-or `github:owner/repo`. mise tools are looked up by exact version and never
-activated in your shell. `system` is the fallback for things mise does not
-manage: toolchain tools (`rustfmt`, `clippy`, `zig fmt`), LuaRocks packages
-such as `luacheck`, or anything else on `$PATH`.
+`nvim/lua/config/set.lua` puts mise's shims first on `$PATH`, and a shim picks
+the version for the directory it runs in. conform, nvim-lint and Neovim's LSP
+client run tools from Neovim's working directory, so start Neovim inside the
+project. Files you open from another project get the tools of the project you
+started in. Run `mise install` in a new project to install its tools, and
+`mise upgrade` to move `"latest"` tools forward: `"latest"` means the newest
+installed version, not the newest release.
 
-`bin` limits which executables a tool provides; `venv`, `node` and `system`
-default to the tool's name. Every LSP, formatter and linter command is rewritten
-to the path of a declared tool, so something that is only on `$PATH` is never
-used. An undeclared executable, or a mise version that is not installed, is
-skipped with a one-time warning.
+Missing tools are reported by the tools themselves: conform says the formatter
+is unavailable, Neovim's LSP client says the server failed to start, and a
+linter that isn't on `$PATH` warns once.
 
-The file runs with an empty environment (declarations only) and goes through
-Neovim's trust prompt (`:trust`). Saving it from Neovim trusts it and reloads
-the project: servers restart and diagnostics refresh.
+Changing `.nvim-tools.lua` or the project's mise config (`mise.local.toml`,
+`mise.toml`, `.mise.toml`, `.tool-versions`) reloads the project: servers
+restart, so they pick up new versions, and diagnostics refresh. Deleting
+`.nvim-tools.lua` unloads the project.
+
+`.nvim-tools.lua` runs with an empty environment (declarations only) and must be
+trusted. Saving it from Neovim trusts it; the first load of a file created
+elsewhere shows Neovim's trust prompt. An edit made outside Neovim (another
+editor, an agent, `git checkout`) isn't trusted yet, so the running setup stays
+as it is and a notification asks you to open and save the file to apply it.
 
 Commands:
 
 - `:ProjectTools` / `<leader>ct`: health for loaded projects (`:checkhealth project-tools`).
-- `:ProjectTools edit` / `<leader>cT`: open the file, creating it from a template.
-- `:ProjectTools install`: install missing mise tools at their declared versions.
-- `:ProjectTools reload`: re-read files, e.g. after installing tools outside Neovim.
+- `:ProjectTools edit` / `<leader>cT`: open `.nvim-tools.lua`, creating it from a template.
+- `:ProjectTools reload`: re-read every loaded project.
 
 Run the integration checks with installed Conform and nvim-lint plugins and Python 3:
 
