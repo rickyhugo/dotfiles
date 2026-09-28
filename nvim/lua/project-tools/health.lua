@@ -6,6 +6,8 @@ local function sorted_keys(value)
 	return keys
 end
 
+local missing = "Install it or put it on $PATH, e.g. by pinning it in your mise config"
+
 local function report_executable(label, command)
 	if type(command) ~= "string" then
 		return vim.health.info(label .. " (command resolved when it starts)")
@@ -14,11 +16,41 @@ local function report_executable(label, command)
 	if path ~= "" then
 		vim.health.ok(label .. " → " .. path)
 	else
-		vim.health.error(label .. ": " .. command .. " not found on $PATH", "Add it to mise.local.toml")
+		vim.health.error(label .. ": " .. command .. " not found on $PATH", missing)
 	end
 end
 
-function M.report(project, source)
+-- What `project` adds to or overrides in `base` (the global base), so project
+-- sections don't repeat the global one.
+local function own(project, base)
+	if not base then
+		return project
+	end
+	local function not_in(list, other)
+		return vim.tbl_filter(function(name)
+			return not vim.tbl_contains(other or {}, name)
+		end, list)
+	end
+	local format, lint = {}, {}
+	for ft, list in pairs(project.format) do
+		if not vim.deep_equal(list, base.format[ft]) then
+			format[ft] = list
+		end
+	end
+	for ft, list in pairs(project.lint) do
+		local added = not_in(list, base.lint[ft])
+		if #added > 0 then
+			lint[ft] = added
+		end
+	end
+	return { root = project.root, lsp_names = not_in(project.lsp_names, base.lsp_names), format = format, lint = lint }
+end
+
+function M.report(project, source, base)
+	project = own(project, base)
+	if base and #project.lsp_names == 0 and not next(project.format) and not next(project.lint) then
+		return vim.health.info("Nothing beyond the global base")
+	end
 	for _, name in ipairs(project.lsp_names) do
 		local config = vim.lsp.config[name]
 		if not config then
@@ -46,7 +78,7 @@ function M.report(project, source)
 				local path = info.command and vim.fn.exepath(info.command)
 				vim.health.ok(label .. (info.command and (" → " .. (path ~= "" and path or info.command)) or ""))
 			else
-				vim.health.error(label .. ": " .. (info.available_msg or "unavailable"), "Add it to mise.local.toml")
+				vim.health.error(label .. ": " .. (info.available_msg or "unavailable"), missing)
 			end
 		end
 	end
@@ -96,8 +128,8 @@ function M.check()
 		if project.error then
 			vim.health.error(project.error, "Fix " .. project.path .. " then save it; the global base still applies")
 		else
-			vim.health.info("Includes the global base")
-			M.report(project, source)
+			vim.health.info("Only what this project adds to the global base:")
+			M.report(project, source, tools.outside())
 		end
 	end
 end
