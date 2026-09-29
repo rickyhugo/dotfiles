@@ -3,14 +3,4 @@
   "shell": "/bin/zsh",
   "update": "notify",
   "formatter": true,
-  "mcp": {
-    "fmo": {
-      "type": "remote",
-      "url": "http://212.247.219.78/mcp",
-      "oauth": false,
-      "headers": {
-        "Authorization": "Bearer {file:~/.secrets/fmo-mcp-token}",
-      },
-    },
-  },
 }
