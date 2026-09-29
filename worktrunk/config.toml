@@ -1,1 +1,14 @@
 skip-commit-generation-prompt = true
+
+# Seed local tool config from the default branch's worktree on create/switch.
+# Never replace a file (or symlink) already present in the destination.
+post-switch = """
+source={{ worktree_path_of_branch(default_branch) }}
+if [ -n "$source" ] && [ "$source" != "$PWD" ]; then
+  for file in .nvim-tools.lua mise.local.toml; do
+    if [ -f "$source/$file" ] && [ ! -e "$file" ] && [ ! -L "$file" ]; then
+      cp "$source/$file" "$file"
+    fi
+  done
+fi
+"""
