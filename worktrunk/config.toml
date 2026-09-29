@@ -2,7 +2,8 @@ skip-commit-generation-prompt = true
 
 # Seed local tool config from the default branch's worktree on create/switch.
 # Never replace a file (or symlink) already present in the destination.
-post-switch = """
+[post-switch]
+local-config = """
 branch={{ default_branch }}
 source=$(git worktree list --porcelain | awk -v branch="refs/heads/$branch" '
   $1 == "worktree" { path = substr($0, 10) }
@@ -16,3 +17,4 @@ if [ -n "$source" ] && [ "$source" != "$PWD" ]; then
   done
 fi
 """
+pnpm-install = "if [ -f pnpm-lock.yaml ]; then pnpm install; fi"
