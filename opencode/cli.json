@@ -16,6 +16,5 @@
   },
   "keybinds": {
     "variant.cycle": "<leader>v"
-  },
-  "plugins": ["./herdr-opencode"]
+  }
 }
