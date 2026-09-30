@@ -10,7 +10,14 @@ cd = false
 # Never replace a file (or symlink) already present in the destination.
 [post-switch]
 local-config = """
-source={{ worktree_path_of_branch(default_branch) or primary_worktree_path }}
+branch={{ default_branch }}
+source=$(git -c core.quotePath=false worktree list --porcelain | awk -v branch="refs/heads/$branch" '
+  $1 == "worktree" { path = substr($0, 10) }
+  $1 == "branch" && $2 == branch { print path; exit }
+')
+if [ -z "$source" ]; then
+  source={{ primary_worktree_path }}
+fi
 if [ -n "$source" ] && [ "$source" != "$PWD" ]; then
   for file in .nvim-tools.lua mise.local.toml; do
     if [ -f "$source/$file" ] && [ ! -e "$file" ] && [ ! -L "$file" ]; then
