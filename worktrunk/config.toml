@@ -5,15 +5,12 @@ skip-commit-generation-prompt = true
 [switch]
 cd = false
 
-# Seed local tool config from the default branch's worktree on create/switch.
+# Seed local tool config on create/switch from the default branch's worktree,
+# falling back to the primary worktree when the default branch isn't checked out.
 # Never replace a file (or symlink) already present in the destination.
 [post-switch]
 local-config = """
-branch={{ default_branch }}
-source=$(git worktree list --porcelain | awk -v branch="refs/heads/$branch" '
-  $1 == "worktree" { path = substr($0, 10) }
-  $1 == "branch" && $2 == branch { print path; exit }
-')
+source={{ worktree_path_of_branch(default_branch) or primary_worktree_path }}
 if [ -n "$source" ] && [ "$source" != "$PWD" ]; then
   for file in .nvim-tools.lua mise.local.toml; do
     if [ -f "$source/$file" ] && [ ! -e "$file" ] && [ ! -L "$file" ]; then
