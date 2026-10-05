@@ -1,7 +1,12 @@
 vim.api.nvim_create_autocmd("LspAttach", {
 	group = vim.api.nvim_create_augroup("huen.lsp", {}),
 	desc = "LSP actions",
-	callback = function(_)
+	callback = function(event)
+		local client = vim.lsp.get_client_by_id(event.data.client_id)
+		if client and client:supports_method("textDocument/codeLens") then
+			vim.lsp.codelens.enable(true, { bufnr = event.buf })
+		end
+
 		local builtin = require("telescope.builtin")
 
 		vim.opt_local.omnifunc = "v:lua.vim.lsp.omnifunc"

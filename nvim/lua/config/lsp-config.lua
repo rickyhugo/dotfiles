@@ -52,7 +52,6 @@ vim.lsp.config["gopls"] = {
 				useany = true,
 			},
 			usePlaceholders = true,
-			completeUnimported = true,
 			staticcheck = false,
 			directoryFilters = { "-.git", "-.vscode", "-.idea", "-.vscode-test", "-node_modules" },
 			semanticTokens = true,
