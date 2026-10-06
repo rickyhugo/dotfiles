@@ -18,26 +18,10 @@ steps {
   ["taplo"] = Builtins.taplo
   ["taplo_format"] = Builtins.taplo_format
 
-  // JSON/JSONC/YAML/Markdown with prettierd, the formatter the editor runs on
-  // save. prettierd only reads stdin and writes stdout, so `check_diff`
-  // patches with `hk util format-diff` and `fix` loops over the files.
-  ["prettier"] = new Step {
+  // JSON/JSONC/YAML/Markdown. Same formatter the editor runs on save
+  // (prettierd is the daemon; hk calls the CLI).
+  ["prettier"] = (Builtins.prettier) {
     glob = List("**/*.json", "**/*.jsonc", "**/*.yaml", "**/*.yml", "**/*.md")
-    check_diff = "hk util format-diff {{files}} -- prettierd --stdin-filepath {}"
-    fix =
-      #"""
-      failed=0
-      for f in {{files}}; do
-      tmp=$(mktemp "$f.XXXXXX") || { failed=1; continue; }
-      if prettierd --stdin-filepath "$f" < "$f" > "$tmp"; then
-      cmp -s "$f" "$tmp" || mv "$tmp" "$f"
-      else
-      failed=1
-      fi
-      rm -f "$tmp"
-      done
-      exit $failed
-      """#
   }
 
   // Spelling: every text file.
