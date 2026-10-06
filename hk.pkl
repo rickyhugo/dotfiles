@@ -1,0 +1,72 @@
+amends "package://github.com/jdx/hk/releases/download/v2.5.0/hk@2.5.0#/Config.pkl"
+
+import "package://github.com/jdx/hk/releases/download/v2.5.0/hk@2.5.0#/Builtins.pkl"
+// Using a coding agent? See https://hk.jdx.dev/agents
+
+// Steps here run in `hk check`, `hk fix`, and the `pre-commit` hook:
+// `check` reports, `fix` rewrites, and `pre-commit` fixes and stages.
+steps {
+  // Lua: nvim config.
+  ["stylua"] = Builtins.stylua
+
+  // Shell.
+  ["shellcheck"] = Builtins.shellcheck
+  ["shellharden"] = Builtins.shellharden
+  ["shfmt"] = Builtins.shfmt
+
+  // TOML.
+  ["taplo"] = Builtins.taplo
+  ["taplo_format"] = Builtins.taplo_format
+
+  // JSON/JSONC/YAML/Markdown with prettierd, the formatter the editor runs on
+  // save. prettierd only reads stdin and writes stdout, so `check_diff`
+  // patches with `hk util format-diff` and `fix` loops over the files.
+  ["prettier"] = new Step {
+    glob = List("**/*.json", "**/*.jsonc", "**/*.yaml", "**/*.yml", "**/*.md")
+    check_diff = "hk util format-diff {{files}} -- prettierd --stdin-filepath {}"
+    fix =
+      #"""
+      failed=0
+      for f in {{files}}; do
+      tmp=$(mktemp "$f.XXXXXX") || { failed=1; continue; }
+      if prettierd --stdin-filepath "$f" < "$f" > "$tmp"; then
+      cmp -s "$f" "$tmp" || mv "$tmp" "$f"
+      else
+      failed=1
+      fi
+      rm -f "$tmp"
+      done
+      exit $failed
+      """#
+  }
+
+  // Spelling: every text file.
+  ["typos"] = Builtins.typos
+
+  // File hygiene.
+  ["newlines"] = Builtins.newlines
+  ["trailing_whitespace"] = Builtins.trailing_whitespace
+  ["mixed_line_ending"] = Builtins.mixed_line_ending
+  ["check_merge_conflict"] = Builtins.check_merge_conflict
+  ["check_executables_have_shebangs"] = Builtins.check_executables_have_shebangs
+  ["check_shebang_scripts_are_executable"] = Builtins.check_shebang_scripts_are_executable
+  ["check_symlinks"] = Builtins.check_symlinks
+  ["detect_private_key"] = Builtins.detect_private_key
+
+  // Wallpapers are intentionally large.
+  ["check_added_large_files"] = (Builtins.check_added_large_files) {
+    exclude = List("wallpapers/**")
+  }
+}
+
+// The nvim integration test is slower than the pre-commit checks, so it runs
+// on push only.
+hooks {
+  ["pre-push"] {
+    steps {
+      ["nvim-project-tools"] {
+        check = "nvim --clean --headless -l nvim/tests/project-tools.lua"
+      }
+    }
+  }
+}

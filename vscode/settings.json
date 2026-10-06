@@ -1,25 +1,25 @@
 {
   "[json][jsonc][markdown][toml][yaml]": {
     "editor.codeActionsOnSave": {
-      "source.fixAll": "always",
+      "source.fixAll": "always"
     },
     "editor.defaultFormatter": "esbenp.prettier-vscode",
     "editor.formatOnSave": true,
-    "editor.formatOnType": false,
+    "editor.formatOnType": false
   },
   "[python]": {
     "editor.codeActionsOnSave": {
       "source.fixAll": "explicit",
-      "source.organizeImports": "explicit",
+      "source.organizeImports": "explicit"
     },
     "editor.defaultFormatter": "charliermarsh.ruff",
     "editor.formatOnSave": true,
-    "editor.formatOnType": false,
+    "editor.formatOnType": false
   },
   "[markdown]": {
     "editor.wordWrapColumn": 80,
     "editor.wordWrap": "off",
-    "prettier.proseWrap": "always",
+    "prettier.proseWrap": "always"
   },
   "catppuccin.accentColor": "flamingo",
   "catppuccin.bracketMode": "neovim",
@@ -34,7 +34,7 @@
   "editor.rulers": [80],
   "editor.stickyScroll.enabled": true,
   "emojisense.languages": {
-    "*": true,
+    "*": true
   },
   "explorer.confirmDelete": false,
   "explorer.confirmDragAndDrop": false,
@@ -46,11 +46,11 @@
   "notebook.defaultFormatter": "charliermarsh.ruff",
   "notebook.cellToolbarLocation": {
     "default": "right",
-    "jupyter-notebook": "right",
+    "jupyter-notebook": "right"
   },
   "notebook.codeActionsOnSave": {
     "notebook.source.fixAll": "explicit",
-    "notebook.source.organizeImports": "explicit",
+    "notebook.source.organizeImports": "explicit"
   },
   "notebook.formatOnSave.enabled": true,
   "notebook.output.textLineLimit": 500,
@@ -67,67 +67,67 @@
   "vim.normalModeKeyBindingsNonRecursive": [
     {
       "before": ["leader", "w"],
-      "commands": ["workbench.action.files.save"],
+      "commands": ["workbench.action.files.save"]
     },
     {
       "before": ["K"],
-      "commands": ["editor.action.showHover"],
+      "commands": ["editor.action.showHover"]
     },
     {
       "before": ["g", "r"],
-      "commands": ["editor.action.goToReferences"],
+      "commands": ["editor.action.goToReferences"]
     },
     {
       "before": ["[", "d"],
       "commands": ["editor.action.marker.prev"],
-      "when": "editorFocus",
+      "when": "editorFocus"
     },
     {
       "before": ["]", "d"],
       "commands": ["editor.action.marker.next"],
-      "when": "editorFocus",
+      "when": "editorFocus"
     },
     {
       "before": ["leader", "t", "t"],
       "commands": ["workbench.view.explorer"],
-      "when": "viewContainer.workbench.view.explorer.enabled",
+      "when": "viewContainer.workbench.view.explorer.enabled"
     },
     {
       "before": ["leader", "b"],
       "commands": ["workbench.action.toggleSidebarVisibility"],
-      "when": "editorFocus",
+      "when": "editorFocus"
     },
     {
       "after": ["<C-d>", "z", "z"],
-      "before": ["<C-d>"],
+      "before": ["<C-d>"]
     },
     {
       "after": ["<C-u>", "z", "z"],
-      "before": ["<C-u>"],
+      "before": ["<C-u>"]
     },
     {
       "before": ["leader", "z"],
-      "commands": ["workbench.action.toggleZenMode"],
+      "commands": ["workbench.action.toggleZenMode"]
     },
     {
       "before": ["<C-r>"],
-      "commands": ["undo"],
+      "commands": ["undo"]
     },
     {
       "before": ["<C-h>"],
-      "commands": ["workbench.action.navigateLeft"],
+      "commands": ["workbench.action.navigateLeft"]
     },
     {
       "before": ["<C-j>"],
-      "commands": ["workbench.action.navigateDown"],
+      "commands": ["workbench.action.navigateDown"]
     },
     {
       "before": ["<C-k>"],
-      "commands": ["workbench.action.navigateUp"],
+      "commands": ["workbench.action.navigateUp"]
     },
     {
       "before": ["<C-l>"],
-      "commands": ["workbench.action.navigateRight"],
+      "commands": ["workbench.action.navigateRight"]
     },
     {
       "after": [
@@ -149,15 +149,15 @@
         "I",
         "<Left>",
         "<Left>",
-        "<Left>",
+        "<Left>"
       ],
-      "before": ["leader", "s"],
+      "before": ["leader", "s"]
     },
     {
       "before": ["z", "z"],
       "commands": ["notebook.centerActiveCell"],
-      "when": "notebookEditorFocused",
-    },
+      "when": "notebookEditorFocused"
+    }
   ],
   "vim.surround": true,
   "vim.useCtrlKeys": true,
@@ -189,15 +189,15 @@
     "editor.insertSpaces": true,
     "editor.tabSize": 2,
     "editor.autoIndent": "advanced",
-    "editor.defaultFormatter": "redhat.vscode-yaml",
+    "editor.defaultFormatter": "redhat.vscode-yaml"
   },
   "[github-actions-workflow]": {
-    "editor.defaultFormatter": "redhat.vscode-yaml",
+    "editor.defaultFormatter": "redhat.vscode-yaml"
   },
   "editor.quickSuggestions": {
     "other": true,
     "comments": true,
-    "strings": true,
+    "strings": true
   },
   "editor.suggestOnTriggerCharacters": true,
   "editor.suggestSelection": "recentlyUsedByPrefix",
@@ -211,6 +211,6 @@
     "*": false,
     "plaintext": false,
     "markdown": false,
-    "scminput": false,
-  },
+    "scminput": false
+  }
 }
