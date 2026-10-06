@@ -1,6 +1,7 @@
 {
   "sidebar": {
-    "width": 50
+    "width": 50,
+    "position": "left"
   },
   "notifications": {
     "enabled": true
