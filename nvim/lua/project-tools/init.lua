@@ -364,9 +364,14 @@ enable_lsp = function(name)
 			warn_once("lsp:" .. name, "unknown LSP config '" .. name .. "'")
 			return
 		end
-		local root_dir, before_init = config.root_dir, config.before_init
+		local root_dir, before_init, cmd = config.root_dir, config.before_init, config.cmd
 		wrapped[name] = true
 		vim.lsp.config(name, {
+			-- Re-injected from the same evaluation of lsp/<name>.lua as the
+			-- captured root_dir: lspconfig re-evaluates the file on later
+			-- resolutions, and some servers (e.g. tsc) fill a cache in
+			-- root_dir that their cmd reads, so the two must not be split.
+			cmd = cmd,
 			before_init = function(params, client_config)
 				if before_init then
 					before_init(params, client_config)

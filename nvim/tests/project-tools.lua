@@ -167,6 +167,34 @@ return {
 	check(vim.tbl_get(nested_client.settings, "nested", "value") == 2, "a nested project's settings reach its server")
 	check(nested_client.id ~= vim.lsp.get_clients({ bufnr = a })[1].id, "nested projects don't share servers")
 
+	-- A server whose cmd reads a cache its root_dir filled (lspconfig's tsc.lua
+	-- keeps one per evaluation of the file) must still start: cmd and root_dir
+	-- are re-injected from the same evaluation of lsp/<name>.lua.
+	local fixture = directory .. "/lsp-fixture"
+	write(
+		fixture .. "/lsp/stateful_test.lua",
+		[[
+local bin
+return {
+	cmd = function(dispatchers)
+		return vim.lsp.rpc.start({ bin or "stateful-missing", "--stdio" }, dispatchers)
+	end,
+	filetypes = { "lua" },
+	root_dir = function(_, on_dir)
+		bin = "testls-server"
+		on_dir(vim.fn.getcwd())
+	end,
+}
+]]
+	)
+	vim.opt.rtp:prepend(fixture)
+	local root_f = project("f", 'return { lsp = { "stateful_test" } }')
+	local f = open(root_f .. "/test.lua")
+	tools.get(f)
+	wait_for(function()
+		return #vim.lsp.get_clients({ bufnr = f }) == 1
+	end, "a stateful config must start with the command its root_dir resolved")
+
 	-- Formatting -----------------------------------------------------------------------
 	check(tools.format_on_save(b) == nil, "no project means no format on save")
 	check(tools.formatters(b).lsp_format == "never", "no project means no LSP formatting")
