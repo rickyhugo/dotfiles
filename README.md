@@ -1,106 +1,27 @@
 # dotfiles
 
+My machines, but make it reproducible. Configs for `nvim`, `kitty`, `starship`, `btop`, `k9s`, `lazygit`, `lazydocker`, `vscode`, `opencode`, `ccmux`, `fsh`, `worktrunk` — plus `wallpapers` so it looks good while breaking.
+
+No snowflakes here: one bootstrap to rule both OSes, powered by `mise`.
+
 ## Setup
 
-Run the bootstrap for your OS (installs OS deps, then `setup_mise.sh`).
-Set `MISE_ENV` on the same command so it flows through to `mise bootstrap`:
+Pick your fighter (sets `MISE_ENV` all the way through to `mise bootstrap`):
 
 ```sh
 MISE_ENV=personal ./scripts/bootstrap_archlinux.sh  # Arch Linux
 MISE_ENV=work ./scripts/bootstrap_macos.sh          # macOS
 ```
 
+Re-runnable and idempotent. Running as root is rejected — even the scripts have boundaries.
+
 ## Neovim project tools
 
-A project declares which LSP servers, formatters and linters run in
-`.nvim-tools.lua` at its root. The nearest `.nvim-tools.lua` above a buffer
-decides. `~/.nvim-tools.lua` is a global base with the same format: every
-buffer gets it, including files outside any project, and project files add to
-it. **Without either file, nothing runs.**
+Each project declares its LSP / formatters / linters in `.nvim-tools.lua` at its root; `~/.nvim-tools.lua` is the global base. Nearest project file wins, global fills the gaps. **Without either file, nothing runs** — silence is a feature.
 
-```lua
-return {
-	lsp = { "lua_ls", "bashls" }, -- vim.lsp.config names
-	format = { -- conform formatters_by_ft syntax, run in order
-		lua = { "stylua" },
-		rust = { lsp_format = "prefer" },
-	},
-	lint = { -- nvim-lint names; "*" applies to every filetype
-		sh = { "shellcheck" },
-		["*"] = { "typos" },
-	},
-	format_on_save = true, -- default
-	lsp_format = "fallback", -- default: never | fallback | prefer | first | last
-	-- Files whose changes restart this project's tools (relative to its root).
-	restart_on = { "mise.local.toml", ".python-version" },
-	-- Extra server settings for this project, merged over nvim/lua/config/lsp-config.lua.
-	settings = {
-		basedpyright = { basedpyright = { analysis = { typeCheckingMode = "strict" } } },
-	},
-}
-```
+Tools come from `$PATH` via mise shims, so start Neovim inside the project and pin versions in `mise.local.toml`. Try `:ProjectTools show` to see the merged config, `:ProjectTools edit` to tweak it.
 
-How a project combines with the global base:
-
-- `lsp`, `lint` and `format["*"]` add up, global entries first, without duplicates.
-- A project's `format` list for a filetype replaces the global list for it, so
-  two formatter chains never run on one file.
-- `format_on_save` and `lsp_format` set in the project win.
-- `settings` are deep-merged per server; the project's values win.
-- `restart_on` adds up. Global entries count in every project, relative to its
-  root; outside projects they are relative to home. Paths starting with `~/` or
-  `/` are exact files, e.g. `~/.config/mise/config.toml` for every buffer.
-- A project file with an error still gets the global base.
-- A project's LSP servers are rooted inside it, even when root markers like
-  `.git` sit higher up, so nested projects get their own servers and settings.
-
-Executables come from `$PATH`; the plugin knows nothing about where they come
-from. Pin versions in `mise.local.toml` next to it, or in your global mise
-config for tools every project uses:
-
-```toml
-[tools]
-lua-language-server = "latest"
-stylua = "latest"
-"npm:bash-language-server" = "latest" # any backend: npm:, pipx:, go:, github:
-```
-
-`nvim/lua/config/set.lua` puts mise's shims first on `$PATH`, and a shim picks
-the version for the directory it runs in. conform, nvim-lint and Neovim's LSP
-client run tools from Neovim's working directory, so start Neovim inside the
-project. Files you open from another project get the tools of the project you
-started in. Run `mise install` in a new project to install its tools, and
-`mise upgrade` to move `"latest"` tools forward: `"latest"` means the newest
-installed version, not the newest release.
-
-Missing tools are reported by the tools themselves: conform says the formatter
-is unavailable, Neovim's LSP client says the server failed to start, and a
-linter that isn't on `$PATH` warns once.
-
-Changing `~/.nvim-tools.lua` restarts the tools of every buffer; changing a
-project's `.nvim-tools.lua` restarts its buffers' tools, and deleting it unloads
-the project. Files listed in `restart_on` do the same, so servers pick up new
-versions: shims resolve a server's version once, when it starts. The plugin
-itself watches nothing else, so put your version manager's files there, e.g.
-`mise.toml`, `mise.local.toml` and `~/.config/mise/config.toml` in
-`~/.nvim-tools.lua`. Edits from anywhere apply: Neovim, another editor,
-`git checkout`, `mise use`.
-
-`.nvim-tools.lua` runs with an empty environment, so it can only name tools,
-not run code. It isn't checked against Neovim's `:trust` list, so edits from
-anywhere (Neovim, another editor, an agent, `git checkout`) apply right away.
-
-Commands:
-
-- `:ProjectTools` / `<leader>ct`: health for the global base and loaded projects (`:checkhealth project-tools`).
-- `:ProjectTools edit` / `<leader>cT`: open `.nvim-tools.lua`, creating it from a template.
-- `:ProjectTools global`: open `~/.nvim-tools.lua`, creating it from a template.
-- `:ProjectTools show`: the current buffer's effective config (global merged
-  with its project) as a `return { ... }` table, which files it came from, and
-  what runs for this buffer. `q` closes it.
-- `:ProjectTools reload`: re-read every loaded project.
-
-Run the integration checks with installed Conform and nvim-lint plugins and Python 3:
+Verify with:
 
 ```sh
 nvim --clean --headless -l nvim/tests/project-tools.lua
