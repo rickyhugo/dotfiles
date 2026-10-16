@@ -17,16 +17,15 @@ Re-runnable and idempotent. Running as root is rejected — even the scripts hav
 
 ## Shared agent skills
 
-Install pstack globally for OpenCode, Claude Code, and Codex with
-`mise run pstack:install`. Mise deploys the symlinks; the compatibility layer and
-model choices live in [`agent-skills/pstack`](agent-skills/pstack/README.md).
-See the [pstack usage guide](agent-skills/pstack/USAGE.md) for prompts and skill selection.
-Use `mise run pstack:check` to verify the installation and `mise run pstack:test`
-to run the adapter tests.
+Install pstack and Cursor Team Kit globally for OpenCode, Claude Code, and Codex with
+`mise run skills:install`. Mise deploys the symlinks; shared infrastructure and
+per-plugin adapters live in [`agent-skills`](agent-skills/README.md).
+See the [usage guide](agent-skills/docs/usage.md) for prompts and skill selection.
+Use `mise run skills:check` to verify the installation. Smoke-test changes ad hoc.
 
-`mise run pstack:update` syncs the latest upstream version. On macOS,
-`mise run pstack:daily:enable` enables automatic updates at 09:00 and login;
-`mise run pstack:daily:disable` turns them off.
+`mise run skills:update` syncs configured upstream sources. On macOS,
+`mise run skills:daily:enable` enables automatic updates at 09:00 and login;
+`mise run skills:daily:disable` turns them off.
 
 ## Neovim project tools
 

@@ -1,4 +1,4 @@
-# Using pstack
+# Using agent skills
 
 Start with `poteto-mode` for nontrivial engineering tasks. It chooses a playbook
 and invokes the other skills as needed. You do not need to pick every skill or
@@ -87,6 +87,23 @@ Use a specific skill when you already know the kind of help you want.
 Parallel workflows can use more tokens than a single-agent task. Reserve them
 for work where independent attempts, coverage, or review justify the cost.
 
+## Cursor Team Kit skills
+
+These skills use the same global links and invocation syntax as pstack:
+
+| Goal                          | OpenCode prompt                                                      |
+| ----------------------------- | -------------------------------------------------------------------- |
+| Clean up code style           | `@deslop Clean up this branch's diff without changing behavior.`     |
+| Diagnose CI failures          | `@fix-ci Investigate failing checks. Don't push or rerun workflows.` |
+| Prove a claim                 | `@verify-this Verify whether this change improves startup time.`     |
+| Drive a CLI or TUI            | `@control-cli Reproduce the keyboard navigation bug locally.`        |
+| Verify a web UI               | `@control-ui Demonstrate the form validation with local test data.`  |
+| Strict maintainability review | `@thermo-nuclear-code-quality-review Review this diff. Report only.` |
+
+The control skills build on tools already available in the project or environment;
+installation does not provision a browser, Playwright, tmux, or a CDP endpoint.
+Some kit workflows include commits, PRs, or shipping, so specify those boundaries.
+
 ## Workers and models
 
 The main chat runs `poteto-mode` and owns the playbook. It delegates individual
@@ -101,7 +118,7 @@ per-host role choices, invoke `setup-pstack` with your host's prefix, for exampl
 ```
 
 Settings live in `~/.config/pstack/models.json`, linked to the versioned
-[`models.json`](models.json) here. These choices affect pstack delegation, not
+[`models.json`](../plugins/pstack/models.json) here. These choices affect pstack delegation, not
 your host's global model. A review panel with inherited models gives independent
 workers, but not different model families.
 
@@ -110,7 +127,7 @@ workers, but not different model families.
 From the dotfiles directory, run:
 
 ```sh
-mise run pstack:check
+mise run skills:check
 ```
 
 For OpenCode's native worker registration:
@@ -126,9 +143,9 @@ newly installed skill or agent is missing.
 ## What does not carry over from Cursor
 
 Cursor's persistent-mode shortcut, `/loop`, cloud agents, history APIs, and
-`cursor-team-kit` tools are not supplied by our compatibility layer. Workflows
+browser/terminal-control runtimes are not supplied by our compatibility layer. Workflows
 that need them must use a verified available equivalent or report the missing
 capability. Native permissions and approval requirements still apply.
 
 For installation, daily updates, logs, and adapter internals, see the
-[compatibility README](README.md).
+[compatibility README](../README.md).

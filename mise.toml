@@ -1,27 +1,23 @@
-[tasks."pstack:install"]
-description = "Build portable pstack skills and deploy global links with mise"
-run = "uv run --script {{config_root}}/scripts/setup_pstack.py --install"
+[tasks."skills:install"]
+description = "Build configured agent skills and deploy global links with mise"
+run = "uv run --script {{config_root}}/scripts/setup_skills.py --install"
 
-[tasks."pstack:check"]
-description = "Verify installed pstack files and global discovery links"
-run = "uv run --script {{config_root}}/scripts/setup_pstack.py --check"
+[tasks."skills:check"]
+description = "Verify installed agent skills and global discovery links"
+run = "uv run --script {{config_root}}/scripts/setup_skills.py --check"
 
-[tasks."pstack:test"]
-description = "Test pstack compatibility generation and collision protection"
-run = "uv run --no-project --python '>=3.11' python -B -m unittest discover -s {{config_root}}/agent-skills/pstack/tests"
+[tasks."skills:update"]
+description = "Update configured skill sources and record their upstream revisions"
+run = "uv run --script {{config_root}}/scripts/setup_skills.py --update"
 
-[tasks."pstack:update"]
-description = "Fetch latest upstream pstack, deploy it, and record the new pin"
-run = "uv run --script {{config_root}}/scripts/setup_pstack.py --update"
+[tasks."skills:daily:enable"]
+description = "Enable daily agent skill updates on macOS at 09:00 and login"
+run = "uv run --script {{config_root}}/scripts/setup_skills.py --schedule enable"
 
-[tasks."pstack:daily:enable"]
-description = "Enable daily pstack updates on macOS at 09:00 and login"
-run = "uv run --script {{config_root}}/scripts/setup_pstack.py --schedule enable"
+[tasks."skills:daily:disable"]
+description = "Disable automatic agent skill updates on macOS"
+run = "uv run --script {{config_root}}/scripts/setup_skills.py --schedule disable"
 
-[tasks."pstack:daily:disable"]
-description = "Disable automatic pstack updates on macOS"
-run = "uv run --script {{config_root}}/scripts/setup_pstack.py --schedule disable"
-
-[tasks."pstack:daily:status"]
-description = "Show the macOS daily pstack update job"
-run = "uv run --script {{config_root}}/scripts/setup_pstack.py --schedule status"
+[tasks."skills:daily:status"]
+description = "Show the macOS daily agent skill update job"
+run = "uv run --script {{config_root}}/scripts/setup_skills.py --schedule status"

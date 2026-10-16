@@ -19,7 +19,7 @@
    `"codex": { "roles": { "bug-fix": "inherit-parent", "interrogate reviewers": ["inherit-parent", "inherit-parent"] } }`.
    Do not promise a mixed-model panel when both entries inherit one parent model.
 5. Write through the existing symlink (do not replace it). This intentionally edits
-   `.dotfiles/agent-skills/pstack/models.json`, so choices can be versioned. Keep
+   `.dotfiles/agent-skills/plugins/pstack/models.json`, so choices can be versioned. Keep
    valid JSON and preserve unknown keys. Do not edit any host's global model,
    permission, or provider settings. Reasoning effort follows the parent unless
    the user separately requests a supported native setting; do not encode effort

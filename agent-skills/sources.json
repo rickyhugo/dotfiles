@@ -1,0 +1,11 @@
+{
+  "cursor-plugins": {
+    "repository": "https://github.com/cursor/plugins.git",
+    "branch": "main",
+    "revision": "f713f14203cd6420cec13cd7c55c32d598dbab68",
+    "plugins": {
+      "pstack": "pstack",
+      "cursor-team-kit": "cursor-team-kit"
+    }
+  }
+}
