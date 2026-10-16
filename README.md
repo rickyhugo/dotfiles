@@ -15,6 +15,18 @@ MISE_ENV=work ./scripts/bootstrap_macos.sh          # macOS
 
 Re-runnable and idempotent. Running as root is rejected — even the scripts have boundaries.
 
+## Shared agent skills
+
+Install pstack globally for OpenCode, Claude Code, and Codex with
+`mise run pstack:install`. Mise deploys the symlinks; the compatibility layer and
+model choices live in [`agent-skills/pstack`](agent-skills/pstack/README.md).
+Use `mise run pstack:check` to verify the installation and `mise run pstack:test`
+to run the adapter tests.
+
+`mise run pstack:update` syncs the latest upstream version. On macOS,
+`mise run pstack:daily:enable` enables automatic updates at 09:00 and login;
+`mise run pstack:daily:disable` turns them off.
+
 ## Neovim project tools
 
 Each project declares its LSP / formatters / linters in `.nvim-tools.lua` at its root; `~/.nvim-tools.lua` is the global base. Nearest project file wins, global fills the gaps. **Without either file, nothing runs** — silence is a feature.
