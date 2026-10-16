@@ -644,6 +644,7 @@ local template = [[
 -- Editor tools for this project, added to the global ~/.nvim-tools.lua.
 -- Executables come from $PATH: pin them in mise.local.toml ([tools]).
 -- restart_on: files (relative to this folder) whose changes restart the tools.
+---@type ProjectToolsConfig
 return {
 	lsp = {
 		-- "lua_ls",
@@ -664,6 +665,7 @@ return {
 local global_template = [[
 -- Editor tools for every buffer; project .nvim-tools.lua files add to these.
 -- Executables come from $PATH, e.g. your global mise config.
+---@type ProjectToolsConfig
 return {
 	lsp = {
 		-- codelens = true, -- Disabled by default; projects can override it.

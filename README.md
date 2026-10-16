@@ -36,6 +36,8 @@ Tools come from `$PATH` via mise shims, so start Neovim inside the project and p
 
 CodeLens annotations are disabled by default. Opt in with `lsp = { "tsgo", codelens = true }` in either tools file; a project's `lsp.codelens` overrides the global value. Changes apply automatically.
 
+For LuaLS completion and hover docs, add `---@type ProjectToolsConfig` immediately before `return { ... }`. LazyDev loads the shared types automatically; newly generated configs already include the annotation. LuaLS must be enabled for the buffer.
+
 Verify with:
 
 ```sh

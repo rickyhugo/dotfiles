@@ -360,6 +360,18 @@ return {
 	tools.edit(b)
 	check(vim.uv.fs_stat(root_b .. "/.nvim-tools.lua"), "edit must create the file")
 	check(not tools.load(root_b).error, "template must be valid: " .. tostring(tools.load(root_b).error))
+	check(
+		table.concat(vim.fn.readfile(root_b .. "/.nvim-tools.lua"), "\n"):find("---@type ProjectToolsConfig", 1, true),
+		"project template includes the shared config type"
+	)
+	tools.edit_global()
+	check(
+		table.concat(vim.fn.readfile(home .. "/.nvim-tools.lua"), "\n"):find("---@type ProjectToolsConfig", 1, true),
+		"global template includes the shared config type"
+	)
+	check(not tools.global().error, "annotated global template must be valid")
+	vim.fn.delete(home .. "/.nvim-tools.lua")
+	tools.reload_global()
 	local reported = {}
 	for _, level in ipairs({ "start", "ok", "warn", "error", "info" }) do
 		vim.health[level] = function(message)
