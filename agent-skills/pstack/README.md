@@ -5,6 +5,8 @@ OpenCode V2, Claude Code, and current Codex. Upstream skills remain the source
 of the engineering workflows; this layer translates host assumptions, not the
 entire Cursor runtime.
 
+For invocation examples and choosing skills, see the [usage guide](USAGE.md).
+
 From the dotfiles directory:
 
 ```sh

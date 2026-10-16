@@ -20,6 +20,7 @@ Re-runnable and idempotent. Running as root is rejected — even the scripts hav
 Install pstack globally for OpenCode, Claude Code, and Codex with
 `mise run pstack:install`. Mise deploys the symlinks; the compatibility layer and
 model choices live in [`agent-skills/pstack`](agent-skills/pstack/README.md).
+See the [pstack usage guide](agent-skills/pstack/USAGE.md) for prompts and skill selection.
 Use `mise run pstack:check` to verify the installation and `mise run pstack:test`
 to run the adapter tests.
 
