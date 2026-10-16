@@ -94,7 +94,20 @@ local function validate(config)
 	for key in pairs(config) do
 		check(known[key], "unknown key '" .. tostring(key) .. "'")
 	end
-	check(config.lsp == nil or list_of_strings(config.lsp), "lsp must be a list of lsp config names")
+	check(
+		config.lsp == nil or type(config.lsp) == "table",
+		"lsp must be a list of lsp config names with optional codelens"
+	)
+	local servers = {}
+	for key, value in pairs(config.lsp or {}) do
+		if type(key) == "number" then
+			servers[key] = value
+		else
+			check(key == "codelens", "lsp: unknown key '" .. tostring(key) .. "'")
+			check(type(value) == "boolean", "lsp.codelens must be a boolean")
+		end
+	end
+	check(list_of_strings(servers), "lsp must be a list of lsp config names")
 	check(config.restart_on == nil or list_of_strings(config.restart_on), "restart_on must be a list of paths")
 	check(config.settings == nil or type(config.settings) == "table", "settings must be a table keyed by lsp name")
 	for name, settings in pairs(config.settings or {}) do
@@ -185,8 +198,15 @@ local function merge(base, own)
 		end
 		return default
 	end
+	local lsp = union(base.lsp, own.lsp)
+	lsp.codelens = false
+	if own.lsp and own.lsp.codelens ~= nil then
+		lsp.codelens = own.lsp.codelens
+	elseif base.lsp and base.lsp.codelens ~= nil then
+		lsp.codelens = base.lsp.codelens
+	end
 	return {
-		lsp = union(base.lsp, own.lsp),
+		lsp = lsp,
 		format = format,
 		lint = lint,
 		format_on_save = setting("format_on_save", true),
@@ -198,7 +218,8 @@ local function merge(base, own)
 end
 
 local function apply(target, config)
-	target.lsp_names = config.lsp
+	target.lsp_names = union(config.lsp)
+	target.codelens = config.lsp.codelens
 	target.lsp = {}
 	for _, name in ipairs(config.lsp) do
 		target.lsp[name] = true
@@ -315,8 +336,10 @@ function M.effective(bufnr)
 	if not project then
 		return nil
 	end
+	local lsp = vim.deepcopy(project.lsp_names)
+	lsp.codelens = project.codelens
 	return {
-		lsp = vim.deepcopy(project.lsp_names),
+		lsp = lsp,
 		format = vim.deepcopy(project.format),
 		lint = vim.deepcopy(project.lint),
 		format_on_save = project.format_on_save,
@@ -342,6 +365,11 @@ local function by_filetype(sections, ft)
 end
 
 -- LSP -------------------------------------------------------------------------
+
+function M.codelens(bufnr)
+	local project = M.get(bufnr)
+	vim.lsp.codelens.enable(project and project.codelens or false, { bufnr = bufnr })
+end
 
 -- Deep-merge src into dst in place: a client keeps a reference to its settings
 -- table, so replacing it would go unnoticed.
@@ -517,6 +545,9 @@ local function restart(buffers, refresh)
 		end
 	end
 	refresh()
+	for _, bufnr in ipairs(buffers) do
+		M.codelens(bufnr)
+	end
 	vim.schedule(function()
 		if next(wrapped) then
 			vim.cmd.doautoall("nvim.lsp.enable FileType")
@@ -616,6 +647,7 @@ local template = [[
 return {
 	lsp = {
 		-- "lua_ls",
+		-- codelens = true, -- Disabled by default.
 	},
 	format = {
 		-- lua = { "stylua" },
@@ -633,7 +665,9 @@ local global_template = [[
 -- Editor tools for every buffer; project .nvim-tools.lua files add to these.
 -- Executables come from $PATH, e.g. your global mise config.
 return {
-	lsp = {},
+	lsp = {
+		-- codelens = true, -- Disabled by default; projects can override it.
+	},
 	format = {
 		-- ["*"] = { "trim_whitespace", "trim_newlines" },
 	},

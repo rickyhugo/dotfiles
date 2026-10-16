@@ -90,7 +90,7 @@ while True:
     if msg.get('method') == 'exit':
         break
     if 'id' in msg:
-        result = {'capabilities': {'textDocumentSync': 1}} if msg.get('method') == 'initialize' else None
+        result = {'capabilities': {'textDocumentSync': 1, 'codeLensProvider': {}}} if msg.get('method') == 'initialize' else []
         body = json.dumps({'jsonrpc': '2.0', 'id': msg['id'], 'result': result}).encode()
         sys.stdout.buffer.write(f'Content-Length: {len(body)}\r\n\r\n'.encode() + body)
         sys.stdout.buffer.flush()
@@ -132,6 +132,10 @@ return {
 	check(tools.find_root(root_b) == nil, "a repo without the file is not a project")
 	check(tools.load(root_c).error:find("pin versions in mise.local.toml", 1, true), "tools belong in mise")
 	check(not tools.load(root_d).error, "a minimal file must load")
+	local invalid_lsp = project("invalid-lsp", 'return { lsp = { codelens = "yes" } }')
+	check(tools.load(invalid_lsp).error:find("lsp.codelens must be a boolean", 1, true), "CodeLens must be a boolean")
+	local unknown_lsp = project("unknown-lsp", "return { lsp = { unknown = true } }")
+	check(tools.load(unknown_lsp).error:find("lsp: unknown key", 1, true), "unknown LSP options are rejected")
 	vim.wait(100)
 	check(not notified("no mise.local.toml"), "a project without mise.local.toml doesn't warn")
 
@@ -151,6 +155,16 @@ return {
 	)
 	vim.wait(200)
 	check(#vim.lsp.get_clients({ bufnr = b }) == 0, "LSP must not attach outside declaring projects")
+	check(tools.effective(a).lsp.codelens == false, "CodeLens defaults off in the effective config")
+	check(not vim.lsp.codelens.is_enabled({ bufnr = a }), "CodeLens defaults off for attached servers")
+	write(root_a .. "/.nvim-tools.lua", (config_a:gsub('"project_test"', '"project_test", codelens = true', 1)))
+	wait_for(function()
+		return vim.lsp.codelens.is_enabled({ bufnr = a })
+	end, "enabling CodeLens on disk applies automatically")
+	write(root_a .. "/.nvim-tools.lua", config_a)
+	wait_for(function()
+		return not vim.lsp.codelens.is_enabled({ bufnr = a })
+	end, "removing the opt-in disables CodeLens automatically")
 
 	-- A nested project gets its own server, rooted at it, with its own settings,
 	-- although the only .git is higher up.
@@ -265,6 +279,7 @@ return {
 		home .. "/.nvim-tools.lua",
 		[[
 return {
+	lsp = { codelens = true },
 	format = { ["*"] = { "trim_whitespace" }, lua = { "trim_newlines" } },
 	restart_on = { ".python-version" },
 	settings = { project_test = { nested = { value = 0, global_only = true } } },
@@ -283,10 +298,12 @@ return {
 		"outside projects: global formatters, filetype first"
 	)
 	check(tools.format_on_save(b) == nil, "outside projects: global format_on_save")
+	check(tools.effective(b).lsp.codelens == true, "global CodeLens opt-in applies outside projects")
+	check(tools.effective(a).lsp.codelens == true, "projects inherit the global CodeLens opt-in")
 
 	local root_e = project(
 		"e",
-		'return { lint = { lua = { "ghostlint", "fakelint" } }, format = { lua = { "fakefmt" } }, format_on_save = true }'
+		'return { lsp = { codelens = false }, lint = { lua = { "ghostlint", "fakelint" } }, format = { lua = { "fakefmt" } }, format_on_save = true }'
 	)
 	local e = open(root_e .. "/test.lua")
 	check(vim.deep_equal(tools.linters(e), { "ghostlint", "fakelint" }), "linters add up without duplicates")
@@ -299,6 +316,7 @@ return {
 		"a project's filetype formatters replace the global ones; '*' still applies"
 	)
 	check(tools.format_on_save(e) ~= nil, "project settings win over global ones")
+	check(tools.effective(e).lsp.codelens == false, "a project can disable the global CodeLens opt-in")
 	check(vim.tbl_contains(tools.effective(e).restart_on, ".python-version"), "global restart_on applies in projects")
 	check(
 		vim.deep_equal(tools.effective(e).settings.project_test, { nested = { value = 0, global_only = true } }),

@@ -36,6 +36,12 @@ vim.keymap.set("n", "<leader>ct", "<cmd>ProjectTools<cr>", { desc = "Project too
 vim.keymap.set("n", "<leader>cT", "<cmd>ProjectTools edit<cr>", { desc = "Edit project tools" })
 
 local group = vim.api.nvim_create_augroup("project-tools", { clear = true })
+vim.api.nvim_create_autocmd("LspAttach", {
+	group = group,
+	callback = function(event)
+		tools.codelens(event.buf)
+	end,
+})
 -- Load before FileType so the project's LSP servers are enabled in time to attach.
 vim.api.nvim_create_autocmd({ "BufReadPre", "BufNewFile" }, {
 	group = group,

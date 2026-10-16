@@ -33,6 +33,8 @@ Each project declares its LSP / formatters / linters in `.nvim-tools.lua` at its
 
 Tools come from `$PATH` via mise shims, so start Neovim inside the project and pin versions in `mise.local.toml`. Try `:ProjectTools show` to see the merged config, `:ProjectTools edit` to tweak it.
 
+CodeLens annotations are disabled by default. Opt in with `lsp = { "tsgo", codelens = true }` in either tools file; a project's `lsp.codelens` overrides the global value. Changes apply automatically.
+
 Verify with:
 
 ```sh
