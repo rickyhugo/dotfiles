@@ -109,5 +109,5 @@ vim.filetype.add({
 	},
 })
 
--- GitHub Actions workflows, so actionlint only lints those (yamlls still attaches).
+-- GitHub Actions workflows, so jactionlint only lints those (yamlls still attaches).
 vim.filetype.add({ pattern = { [".*/%.github/workflows/.*%.ya?ml"] = "yaml.github" } })
