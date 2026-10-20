@@ -1,5 +1,29 @@
 {
-  "opencode": { "roles": {} },
-  "claude": { "roles": {} },
-  "codex": { "roles": {} }
+  "opencode": {
+    "roles": {}
+  },
+  "claude": {
+    "roles": {
+      "feature, refactoring": "sonnet",
+      "bug-fix": "sonnet",
+      "perf-issue": "sonnet",
+      "hillclimb": "sonnet",
+      "arena runners": ["sonnet", "sonnet"],
+      "architect runners": ["sonnet", "sonnet"],
+      "swarm workers": ["sonnet", "sonnet"],
+      "judgment and prose": "opus",
+      "hardest tasks": "opus",
+      "how explainer": "opus",
+      "why synthesizer": "opus",
+      "reflect judgment, divergent, synthesizer": "opus",
+      "arena cross-judge pool": ["opus", "opus"],
+      "how explorer": "sonnet",
+      "reflect tooling": "sonnet",
+      "why investigators": ["sonnet", "sonnet"],
+      "interrogate reviewers": ["opus", "sonnet"]
+    }
+  },
+  "codex": {
+    "roles": {}
+  }
 }
