@@ -6,7 +6,8 @@
   "session": {
     "sidebar": "hide",
     "scrollbar": false,
-    "thinking": "hide"
+    "thinking": "hide",
+    "permissions": "autoaccept"
   },
   "animations": false,
   "theme": { "name": "catppuccin", "mode": "system" },
@@ -16,6 +17,5 @@
   },
   "keybinds": {
     "variant.cycle": "<leader>v"
-  },
-  "experimental": { "todo": true }
+  }
 }
