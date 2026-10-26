@@ -15,7 +15,5 @@
     "indicators": "numbers",
     "enabled": false
   },
-  "keybinds": {
-    "variant.cycle": "<leader>v"
-  }
+  "experimental": { "background_compaction": true }
 }
