@@ -9,6 +9,9 @@ schedule live at the [agent-skills root](../../README.md).
 - `models.json`: versioned per-host role choices, globally linked at
   `~/.config/pstack/models.json`. Missing roles inherit the parent model; panels
   default to two independent workers, not necessarily different model families.
+  A `"<provider>:<model>"` role, such as `"codex:gpt-6.1-sol"`, runs through T3
+  Code's `delegate_task`, so Claude Code can use GPT models; outside T3 it falls
+  back to the parent model.
 - `plugin.json`: skill overrides, model-file link, and native agent policies.
 - `agents/`: local worker prompts; the comment reviewer also keeps its upstream rubric.
 
