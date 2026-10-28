@@ -1,25 +1,92 @@
 {
+  "t3": {
+    "roles": {
+      "feature, refactoring": {
+        "target": "claudeAgent:claude-opus-5-5",
+        "options": {
+          "effort": "high"
+        }
+      },
+      "bug-fix": {
+        "target": "claudeAgent:claude-opus-5-5",
+        "options": {
+          "effort": "high"
+        }
+      },
+      "perf-issue": {
+        "target": "claudeAgent:claude-opus-5-5",
+        "options": {
+          "effort": "high"
+        }
+      },
+      "hillclimb": {
+        "target": "claudeAgent:claude-opus-5-5",
+        "options": {
+          "effort": "high"
+        }
+      },
+      "judgment and prose": "claudeAgent:claude-fable-5-1",
+      "hardest tasks": "claudeAgent:claude-fable-5-1",
+      "how explainer": "claudeAgent:claude-fable-5-1",
+      "why synthesizer": "claudeAgent:claude-fable-5-1",
+      "reflect judgment, divergent, synthesizer": "claudeAgent:claude-fable-5-1",
+      "how explorer": "claudeAgent:claude-sonnet-5-5",
+      "reflect tooling": "claudeAgent:claude-sonnet-5-5",
+      "why investigators": ["claudeAgent:claude-opus-5-5", "codex:gpt-6.1-sol"],
+      "arena runners": ["claudeAgent:claude-opus-5-5", "codex:gpt-6.1-sol"],
+      "architect runners": ["claudeAgent:claude-opus-5-5", "codex:gpt-6.1-sol"],
+      "swarm workers": ["claudeAgent:claude-opus-5-5", "codex:gpt-6.1-sol"],
+      "arena cross-judge pool": [
+        "claudeAgent:claude-opus-5-5",
+        "codex:gpt-6.1-sol"
+      ],
+      "interrogate reviewers": [
+        "claudeAgent:claude-opus-5-5",
+        "codex:gpt-6.1-sol"
+      ]
+    }
+  },
   "opencode": {
     "roles": {}
   },
   "claude": {
     "roles": {
-      "feature, refactoring": "sonnet",
-      "bug-fix": "sonnet",
-      "perf-issue": "sonnet",
-      "hillclimb": "sonnet",
-      "arena runners": ["sonnet", "sonnet"],
-      "architect runners": ["sonnet", "sonnet"],
-      "swarm workers": ["sonnet", "sonnet"],
-      "judgment and prose": "opus",
-      "hardest tasks": "opus",
-      "how explainer": "opus",
-      "why synthesizer": "opus",
-      "reflect judgment, divergent, synthesizer": "opus",
-      "arena cross-judge pool": ["opus", "opus"],
+      "feature, refactoring": {
+        "model": "opus",
+        "options": {
+          "effort": "high"
+        }
+      },
+      "bug-fix": {
+        "model": "opus",
+        "options": {
+          "effort": "high"
+        }
+      },
+      "perf-issue": {
+        "model": "opus",
+        "options": {
+          "effort": "high"
+        }
+      },
+      "hillclimb": {
+        "model": "opus",
+        "options": {
+          "effort": "high"
+        }
+      },
+      "judgment and prose": "fable",
+      "hardest tasks": "fable",
+      "how explainer": "fable",
+      "why synthesizer": "fable",
+      "reflect judgment, divergent, synthesizer": "fable",
       "how explorer": "sonnet",
       "reflect tooling": "sonnet",
-      "why investigators": ["sonnet", "sonnet"],
+      "why investigators": ["opus", "sonnet"],
+      "arena runners": ["opus", "sonnet"],
+      "architect runners": ["opus", "sonnet"],
+      "swarm workers": ["opus", "sonnet"],
+      "arena cross-judge pool": ["opus", "sonnet"],
       "interrogate reviewers": ["opus", "sonnet"]
     }
   },

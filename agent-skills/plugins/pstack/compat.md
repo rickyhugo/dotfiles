@@ -1,35 +1,50 @@
 ## Pstack compatibility
 
 Before following this skill, read `~/.config/pstack/models.json`. Choose the
-current host's `opencode`, `claude`, or `codex` object. `roles` maps upstream role
-labels to native model IDs, or lists for panels. Missing roles, `auto`, and
+current host's `opencode`, `claude`, or `codex` object; when T3 Code tools are
+present, look up each role in the `t3` object first and fall back to the host's
+object for roles `t3` omits. `roles` maps upstream role labels to model IDs, or
+lists for panels. Missing roles, `auto`, and
 `inherit-parent` mean inherit the parent, NOT an upstream Cursor model default.
 Missing panel roles use two independent inherited-model workers. Preserve panel
 size, but do not claim model diversity when workers use the same model.
 
 Use only model IDs and effort settings confirmed available in this host, or for
-cross-provider roles, in T3 Code's catalog. If a configured choice is unavailable,
+`t3` roles, in T3 Code's catalog. If a configured choice is unavailable,
 disclose it and inherit the parent instead of retrying an upstream default. `setup-pstack` configures this JSON file, not Cursor
 rules; ignore `pstack-models.mdc` and `~/.cursor/rules/` references.
 
-### Cross-provider roles
+A host value, alone or in a panel, may also be
+`{ "model": "opus", "options": { "effort": "high" } }`. Pass each option as the
+native agent tool's parameter of the same name, such as Claude Code's `Agent`
+`effort`; the entry is the user's explicit request for that setting. If the tool
+has no such parameter or rejects the value, disclose it and run without it.
+Without options, effort follows the native tool's default.
 
-This extends the shared rule that models are native choices. A role value
-`"<provider>:<model>"`, such as `"codex:gpt-6.1-sol"`, names a T3 Code provider
-instance and a model in its catalog. The object form
-`{ "target": "codex:gpt-6.1-sol", "options": { "reasoningEffort": "high" } }`
-adds model options. Split on the first `:`. Unqualified values stay native to the
-current host. Panel arrays may mix both forms.
+### T3 Code roles
 
-Run a qualified role with T3's `delegate_task` (or its documented ACP fallback),
-not the native agent tool. The exception is a role that names the current host's
-own provider and a model the native tool accepts without options. Before the first
-such delegation, call `orchestrator_capabilities` (pass `search` for unlisted
-models) and confirm the provider instance can run child tasks and has the model.
-Pass `options` as `target.options`, checked against the model's descriptors.
-Without them the child uses the model's defaults: parent options do not cross
-providers. If T3 tools are absent, the provider is disabled, or the model or an
-option is missing, disclose it and run the role on the parent model.
+This extends the shared rule that models are native choices. T3 Code tools are
+present when `orchestrator_capabilities` is callable, after one bounded direct
+attempt if the tool catalog does not list it, or when `T3_ACP_MCP_NODE` is set.
+Without them, ignore the `t3` object and use only the host's object, so the same
+file serves T3 Code and the plain host.
+
+Every `t3` value is provider-qualified, because a T3 thread can run on any
+harness. `"<provider>:<model>"`, such as `"codex:gpt-6.1-sol"`, names a T3
+provider instance and a model in its catalog; split on the first `:`. The object
+form `{ "target": "codex:gpt-6.1-sol", "options": { "reasoningEffort": "high" } }`
+adds model options. Host objects hold only native values; disclose a qualified
+value found there and inherit the parent for that role.
+
+Run a `t3` role with the native agent tool only when it names the current
+harness's provider instance, has no options, and the native tool accepts the
+model; otherwise use T3's `delegate_task` (or its documented ACP fallback).
+Before the first delegation, call `orchestrator_capabilities` (pass `search` for
+unlisted models) and confirm the provider instance can run child tasks and has
+the model. Pass `options` as `target.options`, checked against the model's
+descriptors. Without them the child uses the model's defaults: parent options do
+not cross providers. If the provider is disabled or the model or an option is
+missing, disclose it and use the host's object for that role.
 
 A `delegate_task` child has no `poteto-agent` or `comment-sicko` registration, so
 its prompt carries the role. Give a worker the absolute path to

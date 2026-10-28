@@ -1,11 +1,13 @@
 # Configure pstack for this host
 
 1. Read `~/.config/pstack/models.json`. Preserve other hosts and existing role
-   choices. Determine whether this session runs in OpenCode, Claude Code, or Codex.
+   choices. Determine whether this session runs in OpenCode, Claude Code, or Codex,
+   and whether T3 Code tools are present. Inside T3, offer to configure both the
+   `t3` object and the host's object, which applies outside T3.
 2. Discover which native model IDs and reasoning controls this host actually
    supports. When T3 Code tools are present, also call `orchestrator_capabilities`
    and list each provider instance that can run child tasks, with its models and
-   options; these are offered as cross-provider choices. If discovery is
+   options; these are the choices for the `t3` object. If discovery is
    unavailable, offer `inherit-parent` or ask the user for a confirmed model ID.
    Do not use Cursor model slugs as defaults.
 3. Ask which roles the user wants to change and show the proposed choices before
@@ -20,18 +22,20 @@
 4. Store choices in the current host's `roles` object. Panel values are nonempty
    arrays of model IDs/aliases; other values are strings. Example:
    `"codex": { "roles": { "bug-fix": "inherit-parent", "interrogate reviewers": ["inherit-parent", "inherit-parent"] } }`.
-   Store a cross-provider choice as `"<provider>:<model>"` with the T3 provider
-   instance ID, such as `"codex:gpt-6.1-sol"`, or as
+   Host objects hold only native values; with options, write
+   `{ "model": "opus", "options": { "effort": "high" } }`, naming the native
+   agent tool's parameters. Store T3 choices in the top-level `t3`
+   object's `roles`, always provider-qualified with the T3 provider instance ID,
+   such as `"claudeAgent:claude-fable-5-1"` or `"codex:gpt-6.1-sol"`, or as
    `{ "target": "codex:gpt-6.1-sol", "options": { "reasoningEffort": "high" } }`
-   when the user picks options. Warn that these roles fall back to the parent
-   model outside T3 Code.
+   when the user picks options. Roles `t3` omits use the host's object.
    Do not promise a mixed-model panel when both entries inherit one parent model.
 5. Write through the existing symlink (do not replace it). This intentionally edits
    `.dotfiles/agent-skills/plugins/pstack/models.json`, so choices can be versioned. Keep
    valid JSON and preserve unknown keys. Do not edit any host's global model,
    permission, or provider settings. Reasoning effort follows the parent unless
-   the user separately requests a supported setting, which cross-provider roles
-   store in `options`. Their default is the model's own, not the parent's. Do not
+   the user separately requests a supported setting, which both host and `t3`
+   roles store in `options`. A `t3` default is the model's own, not the parent's. Do not
    encode effort or speed into invented model IDs.
 6. Report what changed. Adapted skills read this file on invocation; this is not
    an always-applied Cursor rule. It affects pstack delegation only, and the host's
