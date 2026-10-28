@@ -322,10 +322,18 @@ local function start(ctx, state)
 	return attempt
 end
 
+function M.cached(roots)
+	local state, notice = load(context(roots))
+	if state and state.snapshot then
+		return view(state, "cached", state.attempt.status == "error" and state.attempt.error or nil)
+	end
+	return { entries = {}, notice = notice or "Discovering Git repositories..." }
+end
+
 function M.open(roots, fresh)
 	local ok, opened = pcall(function()
 		local ctx = context(roots)
-		local state, notice = load(ctx)
+		local state = load(ctx)
 		local attempt = inflight[ctx.identity]
 		if not attempt or not attempt.handle:running() then
 			local started, value = pcall(start, ctx, state)
@@ -340,7 +348,6 @@ function M.open(roots, fresh)
 		if state and state.snapshot and not fresh then
 			return view(state, "cached", state.attempt.status == "error" and state.attempt.error or nil)
 		end
-		print(notice or "Discovering Git repositories. Waiting for a complete list...")
 		local completed, err = attempt.handle:wait(180)
 		inflight[ctx.identity] = nil
 		assert(completed, err)

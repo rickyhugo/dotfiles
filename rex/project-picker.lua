@@ -98,6 +98,73 @@ local function repository_labels(entries)
 	end
 end
 
+local function hex(text)
+	return (text:gsub(".", function(char)
+		return string.format("%02x", char:byte())
+	end))
+end
+
+local function unhex(text)
+	assert(#text % 2 == 0 and not text:find("[^0-9a-f]"), "Picker returned an invalid selection")
+	return (text:gsub("..", function(pair)
+		return string.char(tonumber(pair, 16))
+	end))
+end
+
+local function repository_records(view, notice)
+	local records = {
+		"status\t" .. display(
+			notice
+				or view.notice
+				or (
+					#view.entries == 0 and "No Git repositories found under the configured roots"
+					or "Ctrl-R refreshes repositories"
+				)
+		) .. "\t",
+	}
+	local labels = repository_labels(view.entries)
+	for position, entry in ipairs(view.entries) do
+		local label = labels[position]
+		records[#records + 1] = hex(entry.path) .. "\t" .. display(label) .. "\t" .. hex(label)
+	end
+	return records
+end
+
+local function repository_selection(row)
+	local encoded_path, shown, encoded_label = row:match("^([^\t]+)\t([^\t]*)\t([^\t]*)$")
+	assert(encoded_path, "Picker returned an invalid selection")
+	local path, label = unhex(encoded_path), unhex(encoded_label)
+	assert(
+		path:sub(1, 1) == "/"
+			and not path:find("%z")
+			and not label:find("%z")
+			and label ~= ""
+			and display(label) == shown,
+		"Picker returned an invalid selection"
+	)
+	return { entry = { path = path }, label = label }
+end
+
+local function shell_quote(text)
+	-- Adjacent shell quotes keep literal braces from becoming fzf placeholders.
+	return "'" .. text:gsub("'", "'\\''"):gsub("{", "{''") .. "'"
+end
+
+local function reload_command(roots)
+	local directory = assert(module_source:match("^(.*/)"), "Cannot locate repository rows adapter")
+	if directory:sub(1, 1) ~= "/" then
+		directory = physical_directory(directory)
+	end
+	local args, err = rex.json.encode({ roots = roots })
+	assert(args, err)
+	local argv =
+		{ "rex", "--autostart=false", "do", directory:gsub("/$", "") .. "/repository-picker-rows.lua", "--args", args }
+	for position, arg in ipairs(argv) do
+		argv[position] = shell_quote(arg)
+	end
+	return table.concat(argv, " ")
+end
+
 local function git_root(cwd)
 	if type(cwd) ~= "string" or cwd:sub(1, 1) ~= "/" or cwd:find("%z") then
 		return
@@ -268,15 +335,16 @@ local function centered_margin(length, target)
 	return math.max(0, math.floor((length - target) / 2))
 end
 
-local function choose(source, entries, client_id, view, query, notice)
+local function choose(source, entries, client_id, view, query, notice, command)
 	assert(view or #entries > 0, source.empty)
 	local records, by_row = {}, {}
-	local labels = view and repository_labels(entries) or {}
-	for index, entry in ipairs(entries) do
-		local id = view and entry.id or index
-		local label = labels[index] or entry.label
-		records[index] = id .. "\t" .. display(label)
-		by_row[records[index]] = { entry = entry, label = label }
+	if view then
+		records = repository_records(view, notice)
+	else
+		for index, entry in ipairs(entries) do
+			records[index] = index .. "\t" .. display(entry.label)
+			by_row[records[index]] = { entry = entry, label = entry.label }
+		end
 	end
 	local size = wait_for_size(client_id)
 	local argv = {
@@ -299,12 +367,14 @@ local function choose(source, entries, client_id, view, query, notice)
 		"--no-separator",
 		"--prompt=> ",
 	}
-	if notice then
-		argv[#argv + 1] = "--header=" .. display(notice)
-	end
 	if view then
 		argv[#argv + 1] = "--print-query"
-		argv[#argv + 1] = "--expect=ctrl-r"
+		argv[#argv + 1] = "--header-lines=1"
+		argv[#argv + 1] = "--with-shell=/bin/sh -c"
+		argv[#argv + 1] = "--bind"
+		argv[#argv + 1] = "load:unbind(load)+reload-sync:" .. command
+		argv[#argv + 1] = "--bind"
+		argv[#argv + 1] = "ctrl-r:reload-sync:" .. command
 		argv[#argv + 1] = "--query"
 		argv[#argv + 1] = query
 	end
@@ -314,24 +384,17 @@ local function choose(source, entries, client_id, view, query, notice)
 	})
 	local row, returned_query = result.stdout
 	if view and result.code ~= 130 then
-		local key
-		returned_query, key, row = row:match("^([^%z]*)%z([^%z]*)%z(.*)$")
-		if key == "ctrl-r" and (result.code == 0 or result.code == 1) then
-			return { kind = "refresh", query = returned_query }
-		end
-		if result.code == 0 then
-			assert(key == "", "Picker returned an invalid selection")
-		end
+		returned_query, row = row:match("^([^%z]*)%z(.*)$")
 	end
 	if result.code == 1 or result.code == 130 then
 		return
 	end
 	assert(result.code == 0, failure(result, "Picker failed"))
-	assert(row:sub(-1) == "\0", "Picker returned an invalid selection")
-	local selected = by_row[row:sub(1, -2)]
+	assert(row and row:sub(-1) == "\0" and not row:sub(1, -2):find("%z"), "Picker returned an invalid selection")
+	local selected = view and repository_selection(row:sub(1, -2)) or by_row[row:sub(1, -2)]
 	assert(selected, "Picker returned an invalid selection")
 	if view then
-		return { kind = "select", entry = selected.entry, label = selected.label, query = returned_query }
+		return { entry = selected.entry, label = selected.label, query = returned_query }
 	end
 	return selected.entry
 end
@@ -402,35 +465,35 @@ function M.run(invocation)
 	local roots = roots_snapshot(invocation.roots)
 	if invocation.kind == "repos" then
 		local index = require("repository-index")
-		local view, err = index.open(roots)
-		assert(view, err)
+		local view = index.cached(roots)
+		local command = reload_command(roots)
 		local query, notice = "", view.notice
 		while true do
-			local choice = choose(source, view.entries, invocation.client_id, view, query, notice)
+			local choice = choose(source, view.entries, invocation.client_id, view, query, notice, command)
 			if not choice then
 				return
 			end
 			query = choice.query
-			if choice.kind == "refresh" then
-				local refreshed, refresh_err = index.open(roots, true)
-				if refreshed then
-					view, notice = refreshed, refreshed.notice
-				else
-					notice = "Refresh failed. " .. refresh_err
-				end
-			else
-				local selected, select_err = source.select(choice.entry, choice.label)
-				if selected then
-					return
-				end
-				notice = select_err
+			local selected, select_err = source.select(choice.entry, choice.label)
+			if selected then
+				return
 			end
+			view, notice = index.cached(roots), select_err
 		end
 	end
 	local entry = choose(source, source.entries(roots), invocation.client_id)
 	if entry then
 		source.select(entry)
 	end
+end
+
+function M.repository_rows(invocation)
+	local roots = roots_snapshot(invocation.roots)
+	local index = require("repository-index")
+	local prior = index.cached(roots)
+	local view, err = index.open(roots, true)
+	local notice = not view and ("Refresh failed. " .. err) or nil
+	io.write(table.concat(repository_records(view or prior, notice), "\0") .. "\0")
 end
 
 return M
