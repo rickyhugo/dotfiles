@@ -54,6 +54,41 @@ def local_path(root, relative):
     return path
 
 
+def plugin_definition(value):
+    if isinstance(value, str):
+        return {"path": value, "skill_sets": ["skills"]}
+    if not isinstance(value, dict) or not isinstance(value.get("path"), str):
+        raise ValueError("Plugin definitions must be a path or an object with a path")
+    definition = dict(value)
+    skill_sets = definition.setdefault("skill_sets", ["skills"])
+    if (
+        not isinstance(skill_sets, list)
+        or not skill_sets
+        or not all(isinstance(item, str) and item for item in skill_sets)
+    ):
+        raise ValueError("Plugin skill_sets must be a non-empty list of paths")
+    return {"path": definition["path"], "skill_sets": skill_sets}
+
+
+def plugin_skill_roots(plugin_root, definition):
+    roots = []
+    for relative in definition["skill_sets"]:
+        root = local_path(plugin_root, relative)
+        if not root.is_dir():
+            raise ValueError(f"Plugin skill set is not a directory: {root}")
+        roots.append(root)
+    return roots
+
+
+def skill_directories(plugin_root, definition):
+    directories = {}
+    for root in plugin_skill_roots(plugin_root, definition):
+        for child in sorted(root.iterdir()):
+            if (child / "SKILL.md").is_file():
+                directories[child] = None
+    return list(directories)
+
+
 def latest_pin(pin):
     branch = pin.get("branch", "main")
     result = subprocess.run(
@@ -80,8 +115,9 @@ def fetch_source(root, source_id, pin):
     fingerprint = hashlib.sha256(selection.encode()).hexdigest()[:12]
     cache = root / ".cache" / source_id / f"{pin['revision']}-{fingerprint}"
     if cache.exists():
-        for plugin_id in pin["plugins"]:
-            if not (cache / validate_id(plugin_id) / "skills").is_dir():
+        for plugin_id, value in pin["plugins"].items():
+            definition = plugin_definition(value)
+            if not skill_directories(cache / validate_id(plugin_id), definition):
                 raise ValueError(f"Incomplete source cache: {cache}")
         return cache
     cache.parent.mkdir(parents=True, exist_ok=True)
@@ -102,8 +138,11 @@ def fetch_source(root, source_id, pin):
             timeout=180,
             env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
         )
-        for relative in pin["plugins"].values():
-            local_path(repo, relative)
+        paths = []
+        for value in pin["plugins"].values():
+            definition = plugin_definition(value)
+            local_path(repo, definition["path"])
+            paths.append(definition["path"])
         subprocess.run(
             [
                 "git",
@@ -113,15 +152,16 @@ def fetch_source(root, source_id, pin):
                 "--quiet",
                 "FETCH_HEAD",
                 "--",
-                *pin["plugins"].values(),
+                *dict.fromkeys(paths),
             ],
             check=True,
         )
         staged = Path(tmp) / "plugins"
-        for plugin_id, relative in pin["plugins"].items():
+        for plugin_id, value in pin["plugins"].items():
             validate_id(plugin_id)
+            definition = plugin_definition(value)
             shutil.copytree(
-                local_path(repo, relative),
+                local_path(repo, definition["path"]),
                 staged / plugin_id,
                 ignore=shutil.ignore_patterns(".git"),
             )
@@ -134,18 +174,22 @@ def collect_plugins(sources, root, offline):
     for source_id, pin in sources.items():
         validate_id(source_id)
         cache = None if source_id in offline else fetch_source(root, source_id, pin)
-        for plugin_id, relative in pin["plugins"].items():
+        for plugin_id, value in pin["plugins"].items():
             validate_id(plugin_id)
             if plugin_id in plugins:
                 raise ValueError(f"Duplicate plugin ID across sources: {plugin_id}")
+            definition = plugin_definition(value)
             plugin = (
-                local_path(offline[source_id], relative)
+                local_path(offline[source_id], definition["path"])
                 if cache is None
                 else cache / plugin_id
             )
-            if not (plugin / "skills").is_dir():
-                raise ValueError(f"Plugin has no skills directory: {plugin}")
-            plugins[plugin_id] = plugin
+            if not skill_directories(plugin, definition):
+                raise ValueError(f"Plugin has no skills: {plugin}")
+            plugins[plugin_id] = {
+                "root": plugin,
+                "skill_sets": definition["skill_sets"],
+            }
     return plugins
 
 
@@ -156,7 +200,15 @@ def split_skill(text):
     return text[:end], text[end:]
 
 
-def adapt_skill(text, name, compat, override, adapter):
+def apply_replacements(text, replacements):
+    for old, new in replacements.items():
+        if not isinstance(old, str) or not old or not isinstance(new, str):
+            raise ValueError("body_replacements must map non-empty strings to strings")
+        text = text.replace(old, new)
+    return text
+
+
+def adapt_skill(text, name, compat, override, adapter, replacements=None):
     header, body = split_skill(text)
     lines = header.splitlines()
     if not any(line.startswith("name:") for line in lines):
@@ -167,6 +219,7 @@ def adapt_skill(text, name, compat, override, adapter):
         lines.insert(1, "description: " + json.dumps(override["description"]))
     if "body" in override:
         body = local_path(adapter, override["body"]).read_text()
+    body = apply_replacements(body, replacements or {})
     return (
         "\n".join(lines)
         + "\n\n"
@@ -284,33 +337,55 @@ def build(plugins, root=SKILLS, home=None):
         if agent_ids.intersection(definitions):
             raise ValueError("Duplicate native agent ID across plugins")
         agent_ids.update(definitions)
-    for plugin_id, source in sorted(plugins.items()):
+    for plugin_id, source_config in sorted(plugins.items()):
         validate_id(plugin_id)
+        source = source_config["root"]
         adapter = root / "plugins" / plugin_id
         config = configs[plugin_id]
+        replacements = config.get("body_replacements", {})
+        if not isinstance(replacements, dict):
+            raise ValueError("body_replacements must be an object")
         compat = shared
         if (adapter / "compat.md").exists():
             compat += "\n\n" + (adapter / "compat.md").read_text()
         prefix = Path("plugins") / plugin_id
-        for path in sorted(source.rglob("*")):
-            if path.is_file():
-                relative = str(prefix / path.relative_to(source))
-                files[relative] = path.read_bytes()
-                modes[relative] = path.stat().st_mode & 0o777
-        for skill in sorted((source / "skills").iterdir()):
-            if not (skill / "SKILL.md").is_file():
-                continue
-            name = validate_id(skill.name)
+        skills = []
+        for skill in skill_directories(
+            source, {"skill_sets": source_config["skill_sets"]}
+        ):
+            upstream = validate_id(skill.name)
+            override = config.get("skills", {}).get(upstream, {})
+            name = validate_id(override.get("name", upstream))
             if name in skill_ids:
                 raise ValueError(f"Duplicate skill ID across plugins: {name}")
             skill_ids.add(name)
+            skills.append((skill, name, override))
+        skill_names = {skill: name for skill, name, _ in skills}
+        ordered_skills = sorted(
+            skill_names, key=lambda path: len(path.parts), reverse=True
+        )
+        for path in sorted(source.rglob("*")):
+            if not path.is_file():
+                continue
+            skill = next(
+                (item for item in ordered_skills if path.is_relative_to(item)), None
+            )
+            relative = (
+                prefix / path.relative_to(source)
+                if skill is None
+                else prefix / "skills" / skill_names[skill] / path.relative_to(skill)
+            )
+            files[str(relative)] = path.read_bytes()
+            modes[str(relative)] = path.stat().st_mode & 0o777
+        for skill, name, override in skills:
             relative = prefix / "skills" / name
             files[str(relative / "SKILL.md")] = adapt_skill(
                 (skill / "SKILL.md").read_text(),
                 name,
                 compat,
-                config.get("skills", {}).get(name, {}),
+                override,
                 adapter,
+                replacements,
             )
             for directory in (".agents/skills", ".claude/skills"):
                 add_link(links, home / directory / name, generated / relative)

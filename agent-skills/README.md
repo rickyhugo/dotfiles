@@ -30,7 +30,8 @@ agent-skills/
 ├── compat.md                   # Shared host/tool translation
 ├── plugins/
 │   ├── pstack/                 # Model settings, setup override, agent prompts
-│   └── cursor-team-kit/        # Agent prompts and harness compatibility notes
+│   ├── cursor-team-kit/        # Agent prompts and harness compatibility notes
+│   └── mattpocock-skills/      # Engineering, productivity, misc, in-progress skills
 ├── docs/usage.md
 ├── .cache/                     # Pristine sources and archived migration data
 └── .generated/                 # Adapted plugins, native agents, mise config
@@ -43,8 +44,8 @@ files, license, and relative paths under `.generated/plugins/<plugin>/`.
 ## Add a source or plugin
 
 Declare it in [`sources.json`](sources.json). Source IDs and plugin IDs must be
-unique lowercase kebab-case names. Each plugin path is relative to its repository
-and must contain `skills/<skill-id>/SKILL.md`:
+unique lowercase kebab-case names. A plugin path is relative to its repository.
+The default layout expects `skills/<skill-id>/SKILL.md`:
 
 ```json
 {
@@ -57,18 +58,41 @@ and must contain `skills/<skill-id>/SKILL.md`:
 }
 ```
 
+Category-based repositories can use the object form. `skill_sets` lists the
+directories, relative to the plugin path, whose children contain `SKILL.md`
+files. The installer flattens them under `.generated/plugins/<plugin>/skills/`:
+
+```json
+{
+  "example-source": {
+    "repository": "https://github.com/example/skills.git",
+    "branch": "main",
+    "revision": "<full 40-character commit SHA>",
+    "plugins": {
+      "example-plugin": {
+        "path": "skills",
+        "skill_sets": ["engineering", "productivity"]
+      }
+    }
+  }
+}
+```
+
 Skills-only plugins need no installer changes. For host adaptations, add an
 optional `plugins/<plugin>/compat.md` and `plugin.json`. The latter can declare:
 
-- `skills`: per-skill `body` file and/or `description` overrides.
+- `skills`: per-skill `name` (rename), `body` file, and/or `description`
+  overrides.
+- `body_replacements`: exact string replacements applied to every skill body in
+  the plugin, useful when a rename changes invocation references.
 - `agents`: native agent descriptions and prompt files; `include_upstream`
   defaults to true, `read_only` to false, and `shell` to true. Prompts can use
   `{{plugin_root}}` for the absolute generated plugin directory.
 - `links`: additional `~/...` destinations pointing to files in the local adapter.
 
 See [pstack's adapter](plugins/pstack/plugin.json) for an example. Duplicate skill
-or agent IDs fail rather than silently overriding another plugin. Other Markdown
-skill layouts or vendor-specific features need adaptation before use.
+or agent IDs fail rather than silently overriding another plugin. Vendor-specific
+features or nonstandard layouts may need adaptation before use.
 
 For offline installation, point each source ID at a checkout containing its
 configured plugin paths; the caller must verify the checkout's revision:
@@ -118,6 +142,7 @@ requirements always apply; no permission bypasses are installed.
 
 - [pstack](plugins/pstack/README.md): engineering workflows and role-based models.
 - [Cursor Team Kit](plugins/cursor-team-kit/README.md): CI, review, and local verification.
+- [Matt Pocock skills](plugins/mattpocock-skills/README.md): engineering, productivity, misc, and in-progress skills.
 
 The control skills describe harnesses; they do not install browsers, Playwright,
 tmux, or CDP tools. Cursor cloud agents, persistent modes, history APIs, and `/loop`

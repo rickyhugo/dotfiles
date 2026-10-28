@@ -104,6 +104,31 @@ The control skills build on tools already available in the project or environmen
 installation does not provision a browser, Playwright, tmux, or a CDP endpoint.
 Some kit workflows include commits, PRs, or shipping, so specify those boundaries.
 
+## Matt Pocock skills
+
+Matt Pocock's skills use the same global links:
+
+| Goal                     | OpenCode prompt                                                          |
+| ------------------------ | ------------------------------------------------------------------------ |
+| Pick a workflow          | `@ask-matt Which skill fits a tricky refactor?`                          |
+| Stress-test a plan       | `@grilling Interview me about this design until the branches are clear.` |
+| Diagnose a hard bug      | `@diagnosing-bugs Find the root cause of this intermittent failure.`     |
+| Build test-first         | `@matt-tdd Implement this slice one failing test at a time.`             |
+| Review a branch          | `@code-review Review this branch against main on standards and spec.`    |
+| Turn a plan into tickets | `@to-tickets Break this plan into tracer-bullet tickets.`                |
+| Write a PR body          | `@pr Draft the PR body from this diff.`                                  |
+| Hand off a session       | `@handoff Summarize this session for the next agent.`                    |
+
+`tdd` and `teach` are installed as `matt-tdd` and `matt-teach` because pstack
+already provides skills with those names. Adapting a repo with
+`@setup-matt-pocock-skills` is optional; the engineering skills also work without
+it, but spec, ticket, and triage workflows read the tracker configuration it
+creates. Commit, tracker, and PR actions still require explicit permission.
+
+The `misc` and `in-progress` sets are experimental. `git-guardrails-claude-code`
+and `claude-handoff` are Claude Code-specific features and are not emulated on
+other hosts.
+
 ## Workers and models
 
 The main chat runs `poteto-mode` and owns the playbook. It delegates individual

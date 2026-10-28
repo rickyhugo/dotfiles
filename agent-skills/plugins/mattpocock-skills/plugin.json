@@ -1,0 +1,18 @@
+{
+  "skills": {
+    "tdd": {
+      "name": "matt-tdd"
+    },
+    "teach": {
+      "name": "matt-teach"
+    }
+  },
+  "body_replacements": {
+    "Skill tool with \"tdd\"": "Skill tool with \"matt-tdd\"",
+    "Skill tool with `tdd`": "Skill tool with `matt-tdd`",
+    "Skill tool with \"teach\"": "Skill tool with \"matt-teach\"",
+    "Skill tool with `teach`": "Skill tool with `matt-teach`",
+    "/tdd": "/matt-tdd",
+    "/teach": "/matt-teach"
+  }
+}
