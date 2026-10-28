@@ -25,24 +25,131 @@
           "effort": "high"
         }
       },
-      "judgment and prose": "claudeAgent:claude-fable-5-1",
-      "hardest tasks": "claudeAgent:claude-fable-5-1",
-      "how explainer": "claudeAgent:claude-fable-5-1",
-      "why synthesizer": "claudeAgent:claude-fable-5-1",
-      "reflect judgment, divergent, synthesizer": "claudeAgent:claude-fable-5-1",
-      "how explorer": "claudeAgent:claude-sonnet-5-5",
-      "reflect tooling": "claudeAgent:claude-sonnet-5-5",
-      "why investigators": ["claudeAgent:claude-opus-5-5", "codex:gpt-6.1-sol"],
-      "arena runners": ["claudeAgent:claude-opus-5-5", "codex:gpt-6.1-sol"],
-      "architect runners": ["claudeAgent:claude-opus-5-5", "codex:gpt-6.1-sol"],
-      "swarm workers": ["claudeAgent:claude-opus-5-5", "codex:gpt-6.1-sol"],
+      "judgment and prose": {
+        "target": "claudeAgent:claude-fable-5-1",
+        "options": {
+          "effort": "xhigh"
+        }
+      },
+      "hardest tasks": {
+        "target": "claudeAgent:claude-fable-5-1",
+        "options": {
+          "effort": "xhigh"
+        }
+      },
+      "how explainer": {
+        "target": "claudeAgent:claude-fable-5-1",
+        "options": {
+          "effort": "xhigh"
+        }
+      },
+      "why synthesizer": {
+        "target": "claudeAgent:claude-fable-5-1",
+        "options": {
+          "effort": "xhigh"
+        }
+      },
+      "reflect judgment, divergent, synthesizer": {
+        "target": "claudeAgent:claude-fable-5-1",
+        "options": {
+          "effort": "xhigh"
+        }
+      },
+      "how explorer": {
+        "target": "claudeAgent:claude-sonnet-5-5",
+        "options": {
+          "effort": "high"
+        }
+      },
+      "reflect tooling": {
+        "target": "claudeAgent:claude-sonnet-5-5",
+        "options": {
+          "effort": "high"
+        }
+      },
+      "why investigators": [
+        {
+          "target": "claudeAgent:claude-opus-5-5",
+          "options": {
+            "effort": "high"
+          }
+        },
+        {
+          "target": "codex:gpt-6.1-sol",
+          "options": {
+            "reasoningEffort": "high"
+          }
+        }
+      ],
+      "arena runners": [
+        {
+          "target": "claudeAgent:claude-opus-5-5",
+          "options": {
+            "effort": "high"
+          }
+        },
+        {
+          "target": "codex:gpt-6.1-sol",
+          "options": {
+            "reasoningEffort": "high"
+          }
+        }
+      ],
+      "architect runners": [
+        {
+          "target": "claudeAgent:claude-opus-5-5",
+          "options": {
+            "effort": "high"
+          }
+        },
+        {
+          "target": "codex:gpt-6.1-sol",
+          "options": {
+            "reasoningEffort": "high"
+          }
+        }
+      ],
+      "swarm workers": [
+        {
+          "target": "claudeAgent:claude-opus-5-5",
+          "options": {
+            "effort": "high"
+          }
+        },
+        {
+          "target": "codex:gpt-6.1-sol",
+          "options": {
+            "reasoningEffort": "high"
+          }
+        }
+      ],
       "arena cross-judge pool": [
-        "claudeAgent:claude-opus-5-5",
-        "codex:gpt-6.1-sol"
+        {
+          "target": "claudeAgent:claude-opus-5-5",
+          "options": {
+            "effort": "xhigh"
+          }
+        },
+        {
+          "target": "codex:gpt-6.1-sol",
+          "options": {
+            "reasoningEffort": "xhigh"
+          }
+        }
       ],
       "interrogate reviewers": [
-        "claudeAgent:claude-opus-5-5",
-        "codex:gpt-6.1-sol"
+        {
+          "target": "claudeAgent:claude-opus-5-5",
+          "options": {
+            "effort": "xhigh"
+          }
+        },
+        {
+          "target": "codex:gpt-6.1-sol",
+          "options": {
+            "reasoningEffort": "xhigh"
+          }
+        }
       ]
     }
   },
@@ -75,19 +182,132 @@
           "effort": "high"
         }
       },
-      "judgment and prose": "fable",
-      "hardest tasks": "fable",
-      "how explainer": "fable",
-      "why synthesizer": "fable",
-      "reflect judgment, divergent, synthesizer": "fable",
-      "how explorer": "sonnet",
-      "reflect tooling": "sonnet",
-      "why investigators": ["opus", "sonnet"],
-      "arena runners": ["opus", "sonnet"],
-      "architect runners": ["opus", "sonnet"],
-      "swarm workers": ["opus", "sonnet"],
-      "arena cross-judge pool": ["opus", "sonnet"],
-      "interrogate reviewers": ["opus", "sonnet"]
+      "judgment and prose": {
+        "model": "fable",
+        "options": {
+          "effort": "xhigh"
+        }
+      },
+      "hardest tasks": {
+        "model": "fable",
+        "options": {
+          "effort": "xhigh"
+        }
+      },
+      "how explainer": {
+        "model": "fable",
+        "options": {
+          "effort": "xhigh"
+        }
+      },
+      "why synthesizer": {
+        "model": "fable",
+        "options": {
+          "effort": "xhigh"
+        }
+      },
+      "reflect judgment, divergent, synthesizer": {
+        "model": "fable",
+        "options": {
+          "effort": "xhigh"
+        }
+      },
+      "how explorer": {
+        "model": "sonnet",
+        "options": {
+          "effort": "high"
+        }
+      },
+      "reflect tooling": {
+        "model": "sonnet",
+        "options": {
+          "effort": "high"
+        }
+      },
+      "why investigators": [
+        {
+          "model": "opus",
+          "options": {
+            "effort": "high"
+          }
+        },
+        {
+          "model": "sonnet",
+          "options": {
+            "effort": "high"
+          }
+        }
+      ],
+      "arena runners": [
+        {
+          "model": "opus",
+          "options": {
+            "effort": "high"
+          }
+        },
+        {
+          "model": "sonnet",
+          "options": {
+            "effort": "high"
+          }
+        }
+      ],
+      "architect runners": [
+        {
+          "model": "opus",
+          "options": {
+            "effort": "high"
+          }
+        },
+        {
+          "model": "sonnet",
+          "options": {
+            "effort": "high"
+          }
+        }
+      ],
+      "swarm workers": [
+        {
+          "model": "opus",
+          "options": {
+            "effort": "high"
+          }
+        },
+        {
+          "model": "sonnet",
+          "options": {
+            "effort": "high"
+          }
+        }
+      ],
+      "arena cross-judge pool": [
+        {
+          "model": "opus",
+          "options": {
+            "effort": "xhigh"
+          }
+        },
+        {
+          "model": "sonnet",
+          "options": {
+            "effort": "xhigh"
+          }
+        }
+      ],
+      "interrogate reviewers": [
+        {
+          "model": "opus",
+          "options": {
+            "effort": "xhigh"
+          }
+        },
+        {
+          "model": "sonnet",
+          "options": {
+            "effort": "xhigh"
+          }
+        }
+      ]
     }
   },
   "codex": {

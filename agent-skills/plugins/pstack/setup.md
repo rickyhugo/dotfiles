@@ -29,14 +29,15 @@
    such as `"claudeAgent:claude-fable-5-1"` or `"codex:gpt-6.1-sol"`, or as
    `{ "target": "codex:gpt-6.1-sol", "options": { "reasoningEffort": "high" } }`
    when the user picks options. Roles `t3` omits use the host's object.
+   Every role, including each panel seat, states its effort in `options`; ask
+   for it with the model rather than leaving it to a default.
    Do not promise a mixed-model panel when both entries inherit one parent model.
 5. Write through the existing symlink (do not replace it). This intentionally edits
    `.dotfiles/agent-skills/plugins/pstack/models.json`, so choices can be versioned. Keep
    valid JSON and preserve unknown keys. Do not edit any host's global model,
-   permission, or provider settings. Reasoning effort follows the parent unless
-   the user separately requests a supported setting, which both host and `t3`
-   roles store in `options`. A `t3` default is the model's own, not the parent's. Do not
-   encode effort or speed into invented model IDs.
+   permission, or provider settings. Effort is stored in `options` using the
+   option name the model's tool takes (`effort` for Claude, `reasoningEffort`
+   for Codex). Do not encode effort or speed into invented model IDs.
 6. Report what changed. Adapted skills read this file on invocation; this is not
    an always-applied Cursor rule. It affects pstack delegation only, and the host's
    native agent model configuration may take precedence.

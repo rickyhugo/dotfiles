@@ -19,7 +19,10 @@ A host value, alone or in a panel, may also be
 native agent tool's parameter of the same name, such as Claude Code's `Agent`
 `effort`; the entry is the user's explicit request for that setting. If the tool
 has no such parameter or rejects the value, disclose it and run without it.
-Without options, effort follows the native tool's default.
+
+Every configured role states its effort, and that effort is binding: it overrides
+any upstream instruction to pick a reasoning level per job. A configured role
+with no effort is a configuration gap; disclose it and use `high`.
 
 ### T3 Code roles
 
@@ -37,8 +40,10 @@ adds model options. Host objects hold only native values; disclose a qualified
 value found there and inherit the parent for that role.
 
 Run a `t3` role with the native agent tool only when it names the current
-harness's provider instance, has no options, and the native tool accepts the
-model; otherwise use T3's `delegate_task` (or its documented ACP fallback).
+harness's provider instance, the native tool accepts the model or an alias that
+resolves to it (`claude-opus-5-5` is `opus`), and every option is a native tool
+parameter of the same name, such as `effort` on Claude Code's `Agent`; otherwise
+use T3's `delegate_task` (or its documented ACP fallback).
 Before the first delegation, call `orchestrator_capabilities` (pass `search` for
 unlisted models) and confirm the provider instance can run child tasks and has
 the model. Pass `options` as `target.options`, checked against the model's
