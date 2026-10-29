@@ -114,7 +114,11 @@ are never overwritten. The old pstack cache/generated tree is archived under
 `.cache/legacy-pstack/` after deployment. Model settings remain at
 `~/.config/pstack/models.json`, now linked to `plugins/pstack/models.json`.
 Removed installed skills or links stop updates for manual review rather than
-silently pruning files. Edit adapter sources, not cached or generated files.
+silently pruning files. After reviewing the listed removals, explicitly remove
+obsolete managed symlinks with `mise run skills:install -- --prune` (or
+`mise run skills:update -- --prune`). Unrelated files and links are protected;
+generated skill files are retained. Edit adapter sources, not cached or generated
+files.
 
 ## Daily updates (macOS)
 

@@ -1,5 +1,16 @@
 {
   "t3": {
+    "active_profile": "claudeAgent",
+    "profiles": {
+      "claudeAgent": {
+        "provider_overrides": {}
+      },
+      "claudeAgentDelfi": {
+        "provider_overrides": {
+          "claudeAgent": "claudeAgentDelfi"
+        }
+      }
+    },
     "roles": {
       "feature, refactoring": {
         "target": "claudeAgent:claude-opus-5-5",

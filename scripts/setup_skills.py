@@ -320,7 +320,7 @@ def add_link(links, destination, source):
     links[destination] = str(source)
 
 
-def build(plugins, root=SKILLS, home=None):
+def build(plugins, root=SKILLS, home=None, prune=False):
     home = home or Path.home()
     generated = root / ".generated"
     shared = (root / "compat.md").read_text()
@@ -405,15 +405,21 @@ def build(plugins, root=SKILLS, home=None):
             if path.startswith(f"agents/{host}/"):
                 dest = str(home / directory / Path(path).name)
                 add_link(links, dest, generated / path)
-    for manifest in manifests(root):
-        removed = set(manifest.get("links", {})) - set(links)
-        if removed:
-            raise ValueError(
-                "Installed skills or links were removed; review them before updating:\n"
-                + "\n".join(sorted(removed))
-            )
+    removed = {
+        dest: src
+        for manifest in manifests(root)
+        for dest, src in manifest.get("links", {}).items()
+        if dest not in links
+    }
+    if removed and not prune:
+        raise ValueError(
+            "Installed skills or links were removed; review them before updating:\n"
+            + "\n".join(sorted(removed))
+            + "\nRerun with --prune to remove only obsolete managed symlinks."
+        )
     owned = ownership(root)
     preflight(links, home, owned)
+    preflight(removed, home, owned)
     generated.mkdir(parents=True, exist_ok=True)
     hashes = {}
     for relative, content in files.items():
@@ -426,6 +432,11 @@ def build(plugins, root=SKILLS, home=None):
         temporary.replace(destination)
         hashes[relative] = hashlib.sha256(data).hexdigest()
     write_mise_config(generated, links)
+    for dest in sorted(removed):
+        destination = Path(dest)
+        if destination.is_symlink():
+            destination.unlink()
+            print(f"Removed obsolete managed link: {dest}")
     write_json(
         generated / "manifest.json",
         {
@@ -601,8 +612,19 @@ def main():
     parser.add_argument("--install", action="store_true")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--update", action="store_true")
+    parser.add_argument(
+        "--prune",
+        action="store_true",
+        help="Remove obsolete managed symlinks after reviewing removed skills",
+    )
     parser.add_argument("--schedule", choices=("enable", "disable", "status"))
     args = parser.parse_args()
+    if args.prune and (
+        not (args.install or args.update) or args.check or args.schedule
+    ):
+        parser.error(
+            "--prune requires --install or --update, without --check or --schedule"
+        )
     if args.schedule:
         schedule(args.schedule)
         return
@@ -630,7 +652,7 @@ def main():
             else sources
         )
         plugins = collect_plugins(selected, SKILLS, offline)
-        generated, links = build(plugins)
+        generated, links = build(plugins, prune=args.prune)
         if args.install or args.update:
             deploy(generated, links)
             check(generated)

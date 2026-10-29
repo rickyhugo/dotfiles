@@ -29,6 +29,11 @@
    such as `"claudeAgent:claude-fable-5-1"` or `"codex:gpt-6.1-sol"`, or as
    `{ "target": "codex:gpt-6.1-sol", "options": { "reasoningEffort": "high" } }`
    when the user picks options. Roles `t3` omits use the host's object.
+   To switch subscriptions while sharing role choices, preserve `t3.profiles`
+   and set `t3.active_profile` to the user's chosen profile name. Profiles map
+   provider IDs through `provider_overrides`; see the profile resolution rules
+   in the pstack compatibility section. Confirm the resolved provider's models
+   and options before selecting it.
    Every role, including each panel seat, states its effort in `options`; ask
    for it with the model rather than leaving it to a default.
    Do not promise a mixed-model panel when both entries inherit one parent model.

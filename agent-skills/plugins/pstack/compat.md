@@ -39,6 +39,16 @@ form `{ "target": "codex:gpt-6.1-sol", "options": { "reasoningEffort": "high" } 
 adds model options. Host objects hold only native values; disclose a qualified
 value found there and inherit the parent for that role.
 
+When `t3.active_profile` is set, resolve it in `t3.profiles` before delegation.
+Apply that profile's `provider_overrides` to the provider part of every T3 role
+target, including panel entries; preserve models, options, and panel size.
+For example, the `claudeAgentDelfi` profile routes `claudeAgent:<model>` to
+`claudeAgentDelfi:<model>`, leaving Codex unchanged. An unset profile uses roles
+as written. If the selected profile is missing, report the configuration error
+and use the host's roles. Validate the resolved provider, model, and options
+through `orchestrator_capabilities`; subscriptions are distinct, so an unavailable
+provider falls back to the host's roles, not another T3 profile.
+
 Run a `t3` role with the native agent tool only when it names the current
 harness's provider instance, the native tool accepts the model or an alias that
 resolves to it (`claude-opus-5-5` is `opus`), and every option is a native tool
