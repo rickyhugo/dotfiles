@@ -26,7 +26,7 @@ with three changes for this install:
 | `readonly: true`                | `default`, with "report only, do not edit files" in the brief | `agent: "explore"`                            |
 | `AskQuestion`                   | ask in plain text                                             | `question` tool when offered, else plain text |
 | A todolist                      | the plan tool when offered, else a list in your reply         | `todowrite`                                   |
-| Run another skill               | `$<installed-name>` or read its `SKILL.md`                    | the `skill` tool with the installed name      |
+| Run another skill               | `$<id>`, such as `$pstack:tdd`, or read its `SKILL.md`        | the `skill` tool with the ID it lists         |
 
 On both hosts, omit `run_in_background`, `resume`, and `environment: "local"`.
 Map `environment: "cloud"` to a separate git worktree and name its base branch.
