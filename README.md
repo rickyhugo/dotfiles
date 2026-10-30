@@ -15,17 +15,10 @@ MISE_ENV=work ./scripts/bootstrap_macos.sh          # macOS
 
 Re-runnable and idempotent. Running as root is rejected — even the scripts have boundaries.
 
-## Shared agent skills
+## Agent skills
 
-Install pstack and Cursor Team Kit globally for OpenCode, Claude Code, and Codex with
-`mise run skills:install`. Mise deploys the symlinks; shared infrastructure and
-per-plugin adapters live in [`agent-skills`](agent-skills/README.md).
-See the [usage guide](agent-skills/docs/usage.md) for prompts and skill selection.
-Use `mise run skills:check` to verify the installation. Smoke-test changes ad hoc.
-
-`mise run skills:update` syncs configured upstream sources. On macOS,
-`mise run skills:daily:enable` enables automatic updates at 09:00 and login;
-`mise run skills:daily:disable` turns them off.
+Agent skills for Claude Code, Codex, and OpenCode moved to
+[hstack](https://github.com/rickyhugo/hstack).
 
 ## Neovim project tools
 
