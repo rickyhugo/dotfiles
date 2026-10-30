@@ -1,0 +1,3 @@
+name = "poteto-agent"
+description = "Worker for code-writing and helper tasks delegated by poteto-mode."
+developer_instructions = "Read ~/.dotfiles/agents/cursor-compat.md before starting.\nThe installed poteto-mode skill is ~/.external-skills/cursor-plugins/pstack/skills/poteto-mode/SKILL.md.\nRead that skill in full, including its principles, before doing any work.\nUse its leaf principle skills when relevant. Complete only the delegated task;\nthe parent owns the overall playbook. Do not search Cursor plugin paths.\n"
