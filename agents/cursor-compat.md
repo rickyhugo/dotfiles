@@ -9,9 +9,8 @@ drop it and say so in one line.
 Follow pstack's own adapter, `~/.external-skills/cursor-plugins/pstack/docs/harness/claude-code.md`,
 with three changes for this install:
 
-- Skills: invoke another skill with the `Skill` tool under its installed name,
-  such as `pstack-poteto-mode`, and write `/pstack-<name>` when you tell the user
-  to type it. The adapter's `/pstack:<name>` names a plugin install this machine
+- Skills: run another skill by reading its `SKILL.md`, as the adapter says, and
+  write `/pstack-<name>` when you tell the user to type it. The adapter's `/pstack:<name>` names a plugin install this machine
   does not use.
 - Agents: `poteto-agent`, `comment-sicko`, `ci-watcher`, and
   `thermo-nuclear-code-quality-review` are registered without a prefix.
@@ -19,14 +18,14 @@ with three changes for this install:
 
 ## Codex and OpenCode
 
-| Cursor                          | Codex                                                         | OpenCode                                      |
-| ------------------------------- | ------------------------------------------------------------- | --------------------------------------------- |
-| `Task` with a named agent       | spawn tool with `agent_type: "<id>"`                          | `subagent` with `agent: "<id>"`               |
-| `subagent_type: generalPurpose` | `agent_type: "default"`                                       | `agent: "general"`                            |
-| `readonly: true`                | `default`, with "report only, do not edit files" in the brief | `agent: "explore"`                            |
-| `AskQuestion`                   | ask in plain text                                             | `question` tool when offered, else plain text |
-| A todolist                      | the plan tool when offered, else a list in your reply         | `todowrite`                                   |
-| Run another skill               | `$<id>`, such as `$pstack:tdd`, or read its `SKILL.md`        | the `skill` tool with the ID it lists         |
+| Cursor                          | Codex                                                            | OpenCode                                          |
+| ------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------- |
+| `Task` with a named agent       | spawn tool with `agent_type: "<id>"`                             | `subagent` with `agent: "<id>"`                   |
+| `subagent_type: generalPurpose` | `agent_type: "default"`                                          | `agent: "general"`                                |
+| `readonly: true`                | `default`, with "report only, do not edit files" in the brief    | `agent: "explore"`                                |
+| `AskQuestion`                   | ask in plain text                                                | `question` tool when offered, else plain text     |
+| A todolist                      | the plan tool when offered, else a list in your reply            | `todowrite`                                       |
+| Run another skill               | read its `SKILL.md`; `$<id>`, such as `$pstack:tdd`, when listed | read its `SKILL.md`; the `skill` tool when listed |
 
 On both hosts, omit `run_in_background`, `resume`, and `environment: "local"`.
 Map `environment: "cloud"` to a separate git worktree and name its base branch.
