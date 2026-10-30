@@ -48,8 +48,7 @@ with private file delivery, use an approved private secret-input mechanism.
 
 After import run `gh-agent --check` in a fresh terminal process, then retry the
 original read-only or still-authorized command. Keep existing SSH keys and Git
-transport unchanged. If the helper is missing, deploy it with this repository's
-`mise run skills:install`.
+transport unchanged. If the helper is missing, deploy it with `mise dot apply`.
 
 ## Recovery boundaries
 

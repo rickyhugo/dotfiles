@@ -15,17 +15,23 @@ MISE_ENV=work ./scripts/bootstrap_macos.sh          # macOS
 
 Re-runnable and idempotent. Running as root is rejected — even the scripts have boundaries.
 
-## Shared agent skills
+## Agent skills
 
-Install pstack and Cursor Team Kit globally for OpenCode, Claude Code, and Codex with
-`mise run skills:install`. Mise deploys the symlinks; shared infrastructure and
-per-plugin adapters live in [`agent-skills`](agent-skills/README.md).
-See the [usage guide](agent-skills/docs/usage.md) for prompts and skill selection.
-Use `mise run skills:check` to verify the installation. Smoke-test changes ad hoc.
+Mise clones pstack, Cursor Team Kit, Matt Pocock's skills, and tstack into
+`~/.external-skills/`, then links each skill into `~/.agents/skills/` with a
+prefix naming its source (`pstack-`, `cursor-`, `mp-`, `tstack-`). Claude Code,
+Codex, and OpenCode all read that directory. The entries live in the
+`[dotfiles]` and `[bootstrap.repos]` sections of `~/.config/mise/config.toml`.
 
-`mise run skills:update` syncs configured upstream sources. On macOS,
-`mise run skills:daily:enable` enables automatic updates at 09:00 and login;
-`mise run skills:daily:disable` turns them off.
+[`agents/`](agents) holds the rest, deployed by `mise dot apply`:
+
+- `AGENTS.md`: global instructions for every harness, linked as `~/.claude/CLAUDE.md`,
+  `~/.codex/AGENTS.md`, and `~/.config/opencode/AGENTS.md`.
+- `cursor-compat.md`: how pstack and Team Kit skills map Cursor's tools, agents,
+  and models onto each harness.
+- `claude/`, `codex/`, `opencode/`: helper agents such as `poteto-agent`, one
+  file per host.
+- `skills/`: my own skills, such as `gh-auth`.
 
 ## Neovim project tools
 

@@ -1,26 +1,2 @@
-[tasks."skills:install"]
-description = "Build configured agent skills and deploy global links with mise"
-run = "uv run --script {{config_root}}/scripts/setup_skills.py --install"
-
-[tasks."skills:check"]
-description = "Verify installed agent skills and global discovery links"
-run = "uv run --script {{config_root}}/scripts/setup_skills.py --check"
-
-[tasks."skills:update"]
-description = "Update configured skill sources and record their upstream revisions"
-run = "uv run --script {{config_root}}/scripts/setup_skills.py --update"
-
-[tasks."skills:daily:enable"]
-description = "Enable daily agent skill updates on macOS at 09:00 and login"
-run = "uv run --script {{config_root}}/scripts/setup_skills.py --schedule enable"
-
-[tasks."skills:daily:disable"]
-description = "Disable automatic agent skill updates on macOS"
-run = "uv run --script {{config_root}}/scripts/setup_skills.py --schedule disable"
-
-[tasks."skills:daily:status"]
-description = "Show the macOS daily agent skill update job"
-run = "uv run --script {{config_root}}/scripts/setup_skills.py --schedule status"
-
 [tools]
 hk = { version = "2.5.0", workflow = "release.yml" }
