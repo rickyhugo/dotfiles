@@ -13,7 +13,8 @@
   "theme": { "name": "catppuccin", "mode": "system" },
   "tabs": {
     "indicators": "numbers",
-    "enabled": false
+    "enabled": false,
+    "layout": "vertical"
   },
   "experimental": { "background_compaction": true }
 }
