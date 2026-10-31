@@ -1,3 +1,8 @@
+---
+name: joseph-refactor
+description: Use this to refactor existing code, a complement to /deslop
+---
+
 # Objective
 
 Reduce source code length without golfing while preserving behavior and performance.
