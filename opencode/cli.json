@@ -15,6 +15,5 @@
     "indicators": "numbers",
     "enabled": false,
     "layout": "vertical"
-  },
-  "experimental": { "background_compaction": true }
+  }
 }

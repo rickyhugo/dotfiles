@@ -3,4 +3,7 @@
   "shell": "/bin/zsh",
   "update": "notify",
   "formatter": true,
+  "experimental": {
+    "background_compaction": true,
+  },
 }
