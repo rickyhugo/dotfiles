@@ -1,0 +1,199 @@
+#!/bin/zsh
+# auth-keepalive: keep the gh and gcloud CLIs logged in, run by launchd.
+#
+#   auth-keepalive check      one pass (what launchd runs every few minutes)
+#   auth-keepalive install    install and start the LaunchAgent
+#   auth-keepalive uninstall  stop and remove the LaunchAgent
+#   auth-keepalive status     show credential health and the agent state
+#
+# Anyfin's Google Workspace enforces Cloud SDK reauthentication (~16h), so the
+# gcloud user login cannot be refreshed silently. Instead, when it lapses and
+# you are at the keyboard, this opens the browser login for you, before
+# anything else trips over it. ADC (application-default) is checked the same
+# way. gh uses a non-expiring token, so it only gets a notification if it
+# ever stops working.
+
+set -u
+
+SELF=${0:A}
+LABEL="com.hugo.auth-keepalive"
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+LOG="$HOME/Library/Logs/auth-keepalive.log"
+STATE_DIR="$HOME/.local/state/auth-keepalive"
+INTERVAL="${AUTH_KEEPALIVE_INTERVAL:-300}"     # seconds between checks
+IDLE_LIMIT="${AUTH_KEEPALIVE_IDLE_LIMIT:-300}"  # only pop a login if active this recently
+LOGIN_TIMEOUT=600                               # give up on an unanswered login after this
+NOTIFY_COOLDOWN=3600                            # repeat a "fix this by hand" notice at most hourly
+
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+# Our checks run every few minutes; keep them out of ~/.config/gcloud/logs.
+export CLOUDSDK_CORE_DISABLE_FILE_LOGGING=1
+
+mkdir -p "$STATE_DIR"
+
+log() { print -r -- "$(date '+%F %T') $*"; }
+
+notify() {
+  local title=$1 message=$2
+  if command -v terminal-notifier >/dev/null; then
+    terminal-notifier -title "$title" -message "$message" -group "auth-keepalive-$title" >/dev/null 2>&1
+  else
+    osascript -e "display notification \"$message\" with title \"$title\"" >/dev/null 2>&1
+  fi
+}
+
+# Seconds since the last keyboard or mouse input.
+idle_seconds() {
+  ioreg -c IOHIDSystem | awk '/HIDIdleTime/ { print int($NF / 1000000000); exit }'
+}
+
+user_is_present() { (( $(idle_seconds) < IDLE_LIMIT )); }
+
+online() { curl -fsS -m 5 -o /dev/null https://www.google.com/generate_204 2>/dev/null; }
+
+# Run the given function at most once per NOTIFY_COOLDOWN, keyed by name.
+cooldown_ok() {
+  local stamp="$STATE_DIR/$1.notified"
+  if [[ -f $stamp ]] && (( $(date +%s) - $(stat -f %m "$stamp") < NOTIFY_COOLDOWN )); then
+    return 1
+  fi
+  touch "$stamp"
+}
+
+gh_bin() { mise which gh 2>/dev/null || command -v gh; }
+
+# Exit status 0 = healthy, 1 = needs login, 2 = unknown error (left alone).
+gcloud_probe() {
+  local err
+  if err=$(gcloud "$@" --quiet 2>&1 >/dev/null); then
+    return 0
+  fi
+  if [[ $err == *(Reauthentication|invalid_grant|auth login|application-default login)* ]]; then
+    print -r -- "$err" | tail -1 > "$STATE_DIR/last-error"
+    return 1
+  fi
+  log "gcloud $1 $2: unexpected error: $(print -r -- "$err" | tail -1)"
+  return 2
+}
+
+# Run a browser login in the background and kill it if nobody completes it.
+run_login() {
+  local name=$1; shift
+  log "$name: starting browser login"
+  notify "$name" "Login expired — opening the browser to sign in again."
+  "$@" 2>&1 &
+  local pid=$! waited=0
+  while kill -0 $pid 2>/dev/null; do
+    if (( waited >= LOGIN_TIMEOUT )); then
+      kill $pid 2>/dev/null
+      log "$name: login not completed within ${LOGIN_TIMEOUT}s, will retry when you're back"
+      return 1
+    fi
+    sleep 5; (( waited += 5 ))
+  done
+  if wait $pid; then
+    log "$name: login completed"
+    notify "$name" "Signed in again."
+    rm -f "$STATE_DIR/$name.notified"
+  else
+    log "$name: login failed"
+    return 1
+  fi
+}
+
+check_gcloud() {
+  command -v gcloud >/dev/null || return 0
+  local account
+  account=$(gcloud config get account 2>/dev/null)
+  [[ -n $account ]] || return 0
+
+  gcloud_probe auth print-access-token
+  if (( $? == 1 )); then
+    if user_is_present; then
+      run_login gcloud gcloud auth login "$account" --brief --quiet
+    else
+      log "gcloud: login expired, waiting for you to be at the keyboard"
+    fi
+  fi
+
+  if [[ -f $HOME/.config/gcloud/application_default_credentials.json ]]; then
+    gcloud_probe auth application-default print-access-token
+    if (( $? == 1 )); then
+      if user_is_present; then
+        run_login gcloud-adc gcloud auth application-default login --quiet
+      else
+        log "gcloud-adc: login expired, waiting for you to be at the keyboard"
+      fi
+    fi
+  fi
+}
+
+check_gh() {
+  local gh; gh=$(gh_bin) || return 0
+  if "$gh" auth status --hostname github.com >/dev/null 2>&1; then
+    rm -f "$STATE_DIR/gh.notified"
+    return 0
+  fi
+  log "gh: token rejected"
+  # gh's web login needs a terminal to show its one-time code, so just say so.
+  cooldown_ok gh && notify "GitHub CLI" "Token no longer works — run: gh auth login"
+}
+
+cmd_check() {
+  if ! online; then
+    return 0
+  fi
+  check_gh
+  check_gcloud
+}
+
+cmd_status() {
+  local gh; gh=$(gh_bin)
+  print -n "gh:          "; "$gh" auth status --hostname github.com >/dev/null 2>&1 && print ok || print "needs login"
+  print -n "gcloud user: "; gcloud_probe auth print-access-token 2>/dev/null && print ok || print "needs login"
+  print -n "gcloud ADC:  "; gcloud_probe auth application-default print-access-token 2>/dev/null && print ok || print "needs login"
+  print -n "agent:       "; launchctl print "gui/$UID/$LABEL" >/dev/null 2>&1 && print "loaded ($PLIST)" || print "not loaded"
+  print    "log:         $LOG"
+}
+
+cmd_install() {
+  local self=$SELF
+  mkdir -p "${PLIST:h}" "${LOG:h}" "$HOME/.local/bin"
+  ln -sf "$self" "$HOME/.local/bin/auth-keepalive"
+  cat >"$PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$LABEL</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$self</string>
+    <string>check</string>
+  </array>
+  <key>StartInterval</key><integer>$INTERVAL</integer>
+  <key>RunAtLoad</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>$LOG</string>
+  <key>StandardErrorPath</key><string>$LOG</string>
+</dict>
+</plist>
+EOF
+  launchctl bootout "gui/$UID/$LABEL" 2>/dev/null
+  launchctl bootstrap "gui/$UID" "$PLIST"
+  print "Installed $PLIST (checks every ${INTERVAL}s). Log: $LOG"
+}
+
+cmd_uninstall() {
+  launchctl bootout "gui/$UID/$LABEL" 2>/dev/null
+  rm -f "$PLIST" "$HOME/.local/bin/auth-keepalive"
+  print "Removed $LABEL"
+}
+
+case "${1:-}" in
+  check) cmd_check ;;
+  status) cmd_status ;;
+  install) cmd_install ;;
+  uninstall) cmd_uninstall ;;
+  *) print -u2 "usage: ${0:t} check|status|install|uninstall"; exit 64 ;;
+esac
