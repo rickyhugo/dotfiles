@@ -6,4 +6,15 @@
   "experimental": {
     "background_compaction": true,
   },
+  "mcp": {
+    "servers": {
+      "browse": {
+        "type": "local",
+        "command": ["browse", "mcp"],
+        "environment": {
+          "OPENCODE_BROWSER_RUNTIME": "auto-update",
+        },
+      },
+    },
+  },
 }
