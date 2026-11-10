@@ -1,3 +1,6 @@
+-- tmux-style prefix. Change this one line and every prefixed shortcut moves.
+local prefix = "ctrl+t"
+
 local function bind_app(key, command, path_prepend)
 	rex.action({
 		name = "open_" .. command,
@@ -85,3 +88,19 @@ for i = 1, 9 do
 	rex.bind("cmd+" .. i, "client.tab.goto", { index = i })
 end
 rex.bind("cmd+0", "client.tab.goto", { index = -1 })
+
+-- prefix shortcuts: press the prefix, let go, then the key
+rex.bind(prefix .. ">r", "client.config.reload")
+rex.bind(prefix .. ">shift+5", "pane.split", { direction = "right" }) -- %
+rex.bind(prefix .. ">shift+'", "pane.split", { direction = "down" }) -- "
+rex.bind(prefix .. ">p", "project_picker")
+rex.bind(prefix .. ">s", "session_picker")
+rex.bind(prefix .. ">g", "open_lazygit")
+rex.bind(prefix .. ">o", "open_opencode")
+for i = 1, 9 do
+	rex.bind(prefix .. ">" .. i, "client.tab.goto", { index = i })
+end
+rex.bind(prefix .. ">0", "client.tab.goto", { index = -1 })
+
+-- press the prefix twice to send one to the terminal
+rex.bind(prefix .. ">" .. prefix, "pane.send_key", { key = prefix })
