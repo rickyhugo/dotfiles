@@ -1,5 +1,10 @@
 # Global agent instructions
 
+## General
+
+When responding, always be extremely concise. Sacrifice grammar for the sake of
+concision.
+
 ## Installed skills
 
 Skills come from several repositories, and some share a name: pstack and Matt
