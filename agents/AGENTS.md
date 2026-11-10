@@ -3,7 +3,8 @@
 ## General
 
 When responding, always be extremely concise. Sacrifice grammar for the sake of
-concision.
+concision. If the user explicitly asks for an explanation, use ASD-STE100
+Simplified Technical English.
 
 ## Installed skills
 
