@@ -61,7 +61,7 @@ local function bind_app(key, command, path_prepend)
 end
 
 -- config
-rex.bind("cmd+shift+r", "client.config.reload")
+rex.bind(prefix .. ">r", "client.config.reload")
 
 -- picker
 local picker = require("project-picker")
@@ -74,32 +74,21 @@ picker.setup({
 })
 
 -- panes
-rex.bind("cmd+shift+/", "pane.split", { direction = "right" })
-rex.bind("cmd+shift+-", "pane.split", { direction = "down" })
+rex.bind(prefix .. ">/", "pane.split", { direction = "right" })
+rex.bind(prefix .. ">-", "pane.split", { direction = "down" })
 
 -- apps
-rex.bind("cmd+shift+f", "project_picker")
-rex.bind("cmd+shift+d", "session_picker")
-bind_app("cmd+shift+s", "lazygit")
-bind_app("cmd+shift+a", "opencode", { os.getenv("HOME") .. "/.opencode/bin" })
+rex.bind(prefix .. ">f", "project_picker")
+rex.bind(prefix .. ">d", "session_picker")
+bind_app(prefix .. ">s", "lazygit")
+bind_app(prefix .. ">a", "opencode", { os.getenv("HOME") .. "/.opencode/bin" })
 
 -- tabs
 for i = 1, 9 do
 	rex.bind("cmd+" .. i, "client.tab.goto", { index = i })
-end
-rex.bind("cmd+0", "client.tab.goto", { index = -1 })
-
--- prefix shortcuts: press the prefix, let go, then the key
-rex.bind(prefix .. ">r", "client.config.reload")
-rex.bind(prefix .. ">shift+5", "pane.split", { direction = "right" }) -- %
-rex.bind(prefix .. ">shift+'", "pane.split", { direction = "down" }) -- "
-rex.bind(prefix .. ">p", "project_picker")
-rex.bind(prefix .. ">s", "session_picker")
-rex.bind(prefix .. ">g", "open_lazygit")
-rex.bind(prefix .. ">o", "open_opencode")
-for i = 1, 9 do
 	rex.bind(prefix .. ">" .. i, "client.tab.goto", { index = i })
 end
+rex.bind("cmd+0", "client.tab.goto", { index = -1 })
 rex.bind(prefix .. ">0", "client.tab.goto", { index = -1 })
 
 -- press the prefix twice to send one to the terminal

@@ -1,0 +1,492 @@
+#!/bin/zsh
+# claude-mcp-auth-keepalive: keep MCP OAuth credentials in sync across every
+# Claude Code config dir, so the plugins enabled in their settings.json stay
+# signed in everywhere.
+#
+#   claude-mcp-auth-keepalive check      one pass (what launchd runs)
+#   claude-mcp-auth-keepalive status     show credential health and agent state
+#   claude-mcp-auth-keepalive install    install and start the LaunchAgent
+#   claude-mcp-auth-keepalive uninstall  stop and remove the LaunchAgent
+#
+# Claude Code keeps MCP OAuth tokens in the login keychain, one item per config
+# dir (plain "Claude Code-credentials" for the default, and a name suffixed
+# with sha256(config dir)[0:8] when CLAUDE_CONFIG_DIR is set). The items are
+# independent, so signing in to Linear or Slack in one profile leaves the other
+# profiles at "Needs authentication".
+#
+# This script merges the newest credential for every MCP server into every
+# config dir's keychain item. When the newest access token has expired it asks
+# Claude Code to refresh it in the store that owns it, then copies the result
+# everywhere. The claude.ai login itself (claudeAiOauth) is never touched:
+# each profile keeps its own account and organization.
+
+set -u
+
+SELF=${0:A}
+LABEL="com.hugo.claude-mcp-auth-keepalive"
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+LOG="$HOME/Library/Logs/claude-mcp-auth-keepalive.log"
+STATE_DIR="$HOME/.local/state/claude-mcp-auth-keepalive"
+INTERVAL="${CLAUDE_MCP_AUTH_INTERVAL:-120}"  # seconds between passes
+REFRESH_WINDOW=60                           # refresh this many seconds before expiry
+
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+mkdir -p "$STATE_DIR"
+
+log() { print -r -- "$(date '+%F %T') $*"; }
+
+notify() {
+  local title=$1 message=$2
+  if command -v terminal-notifier >/dev/null; then
+    terminal-notifier -title "$title" -message "$message" -group "claude-mcp-auth-$title" >/dev/null 2>&1
+  else
+    osascript -e "display notification \"$message\" with title \"$title\"" >/dev/null 2>&1
+  fi
+}
+
+# Run the given function at most once per NOTIFY_COOLDOWN, keyed by name.
+NOTIFY_COOLDOWN=3600
+cooldown_ok() {
+  local stamp="$STATE_DIR/$1.notified"
+  if [[ -f $stamp ]] && (( $(date +%s) - $(stat -f %m "$stamp") < NOTIFY_COOLDOWN )); then
+    return 1
+  fi
+  touch "$stamp"
+}
+
+python_bin() {
+  command -v python3 2>/dev/null || print -r -- /usr/bin/python3
+}
+
+# All the keychain and JSON work lives in one Python pass. It logs progress on
+# stdout and writes "$STATE_DIR/missing" (servers with no credential anywhere)
+# so the shell side can notify.
+run_python() {
+  local py; py=$(python_bin)
+  CLAUDE_MCP_AUTH_STATE="$STATE_DIR" \
+  CLAUDE_MCP_AUTH_REFRESH_WINDOW="$REFRESH_WINDOW" \
+  "$py" - "$1" <<'PY'
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import time
+
+HOME = os.path.expanduser("~")
+STATE = os.environ["CLAUDE_MCP_AUTH_STATE"]
+MODE = sys.argv[1]
+REFRESH_WINDOW = int(os.environ.get("CLAUDE_MCP_AUTH_REFRESH_WINDOW", "60"))
+REFRESH_BACKOFF = 1800  # retry a failed refresh after this many seconds
+NOW_MS = int(time.time() * 1000)
+
+
+def say(message):
+    print(message, flush=True)
+
+
+def run(argv, **kwargs):
+    return subprocess.run(argv, capture_output=True, text=True, **kwargs)
+
+
+def keychain_service(config_dir):
+    if config_dir is None:
+        return "Claude Code-credentials"
+    digest = hashlib.sha256(config_dir.encode()).hexdigest()[:8]
+    return f"Claude Code-credentials-{digest}"
+
+
+def discover_stores():
+    stores = [{
+        "label": "default",
+        "config_dir": None,
+        "service": keychain_service(None),
+        "settings": os.path.join(HOME, ".claude", "settings.json"),
+        "plugins_dir": os.path.join(HOME, ".claude", "plugins"),
+    }]
+    override = os.environ.get("CLAUDE_MCP_AUTH_DIRS", "").strip()
+    if override:
+        candidates = [p for p in override.split(":") if p]
+    else:
+        candidates = [
+            os.path.join(HOME, name)
+            for name in sorted(os.listdir(HOME))
+            if name.startswith(".claude-")
+            and os.path.isdir(os.path.join(HOME, name))
+            and os.path.isfile(os.path.join(HOME, name, ".claude.json"))
+        ]
+    for path in candidates:
+        path = os.path.abspath(os.path.expanduser(path))
+        base = os.path.basename(path)
+        stores.append({
+            "label": base.removeprefix(".claude-") or base,
+            "config_dir": path,
+            "service": keychain_service(path),
+            "settings": os.path.join(path, "settings.json"),
+            "plugins_dir": os.path.join(path, "plugins"),
+        })
+    return stores
+
+
+def keychain_account(service):
+    result = run(["security", "find-generic-password", "-s", service])
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines():
+        if '"acct"' in line:
+            parts = line.split('"')
+            if len(parts) >= 4:
+                return parts[3]
+    return os.environ.get("USER")
+
+
+def read_creds(service):
+    result = run(["security", "find-generic-password", "-s", service, "-w"])
+    if result.returncode != 0:
+        return None
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def write_creds(service, account, data):
+    payload = json.dumps(data, separators=(",", ":"))
+    result = run(["security", "add-generic-password", "-U", "-s", service, "-a", account, "-w", payload])
+    return result.returncode == 0, (result.stderr or result.stdout).strip()
+
+
+def has_creds(record):
+    return bool(record.get("accessToken") or record.get("refreshToken"))
+
+
+def better(candidate, current):
+    """True when candidate supersedes current: newest expiry wins, then a
+    refresh token, then an access token. Discovery-only records never win over
+    a real credential."""
+    if current is None:
+        return True
+    if has_creds(candidate) and not has_creds(current):
+        return True
+    if has_creds(current) and not has_creds(candidate):
+        return False
+    return (
+        candidate.get("expiresAt") or 0,
+        bool(candidate.get("refreshToken")),
+        bool(candidate.get("accessToken")),
+    ) > (
+        current.get("expiresAt") or 0,
+        bool(current.get("refreshToken")),
+        bool(current.get("accessToken")),
+    )
+
+
+def expected_servers(store):
+    """MCP servers declared by the plugins enabled in this config dir."""
+    try:
+        with open(store["settings"]) as handle:
+            settings = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return set()
+    enabled = [name for name, on in (settings.get("enabledPlugins") or {}).items() if on]
+    try:
+        with open(os.path.join(store["plugins_dir"], "installed_plugins.json")) as handle:
+            installed = json.load(handle).get("plugins") or {}
+    except (OSError, json.JSONDecodeError):
+        installed = {}
+
+    names = set()
+    for full_name in enabled:
+        plugin = full_name.split("@", 1)[0]
+        servers = set()
+        for entry in installed.get(full_name) or []:
+            install_path = entry.get("installPath")
+            if not install_path:
+                continue
+            try:
+                with open(os.path.join(install_path, ".mcp.json")) as handle:
+                    config = json.load(handle)
+            except (OSError, json.JSONDecodeError):
+                continue
+            declared = config.get("mcpServers")
+            if not isinstance(declared, dict):
+                declared = config
+            if isinstance(declared, dict):
+                servers.update(declared.keys())
+        for server in servers:
+            names.add(f"plugin:{plugin}:{server}")
+    return names
+
+
+def uses_env(store):
+    env = os.environ.copy()
+    if store["config_dir"]:
+        env["CLAUDE_CONFIG_DIR"] = store["config_dir"]
+    else:
+        env.pop("CLAUDE_CONFIG_DIR", None)
+    return env
+
+
+def refresh(store):
+    """Let Claude Code refresh the tokens it owns for this store."""
+    try:
+        result = run(["claude", "mcp", "list"], cwd=HOME, env=uses_env(store), timeout=120)
+        return result.returncode
+    except FileNotFoundError:
+        return 127
+    except subprocess.TimeoutExpired:
+        return 124
+
+
+def merge_into(data, best):
+    """Copy the winning record for each server into a credentials document.
+    Returns the number of records written."""
+    bucket = data.setdefault("mcpOAuth", {})
+    written = 0
+    for name, record in best.items():
+        if better(record, bucket.get(name)):
+            bucket[name] = record
+            written += 1
+    return written
+
+
+def main():
+    stores = discover_stores()
+    creds = {store["label"]: read_creds(store["service"]) for store in stores}
+    accounts = {}
+
+    for store in stores:
+        if creds.get(store["label"]) is None:
+            continue
+        accounts[store["label"]] = keychain_account(store["service"]) or os.environ.get("USER")
+
+    def best_records():
+        winners = {}
+        owners = {}
+        for store in stores:
+            document = creds.get(store["label"]) or {}
+            for name, record in (document.get("mcpOAuth") or {}).items():
+                if not name.startswith("plugin:") or not isinstance(record, dict):
+                    continue
+                if not has_creds(record):
+                    continue
+                if better(record, winners.get(name)):
+                    winners[name] = record
+                    owners[name] = store["label"]
+        return winners, owners
+
+    best, owners = best_records()
+
+    def expired(record):
+        return bool(
+            record
+            and record.get("expiresAt")
+            and record["expiresAt"] <= NOW_MS + REFRESH_WINDOW * 1000
+        )
+
+    attempts_path = os.path.join(STATE, "refresh-attempts.json")
+    try:
+        with open(attempts_path) as handle:
+            attempts = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        attempts = {}
+
+    refresh_failed = []
+
+    # Refresh expired access tokens in whichever store owns the newest one.
+    if MODE == "sync":
+        due = [
+            name for name, record in best.items()
+            if record.get("refreshToken")
+            and expired(record)
+            and NOW_MS - attempts.get(name, 0) > REFRESH_BACKOFF * 1000
+        ]
+        by_owner = {}
+        for name in due:
+            by_owner.setdefault(owners[name], []).append(name)
+
+        for label, names in by_owner.items():
+            store = next(s for s in stores if s["label"] == label)
+            say(f"refreshing expired token(s) in {label}: {', '.join(n.split('|')[0] for n in names)}")
+            code = refresh(store)
+            fresh = read_creds(store["service"])
+            if fresh is not None:
+                creds[label] = fresh
+            after = {name: (fresh or {}).get("mcpOAuth", {}).get(name) for name in names}
+            still_stale = [name for name in names if expired(after[name])]
+            if fresh is None or code != 0 or still_stale:
+                refresh_failed.extend(still_stale or names)
+                for name in names:
+                    attempts[name] = NOW_MS
+                detail = f"exit {code}" if code != 0 else "token unchanged"
+                say(f"refresh failed in {label} ({detail}); will retry in {REFRESH_BACKOFF // 60}m")
+            else:
+                for name in names:
+                    attempts.pop(name, None)
+
+        with open(attempts_path, "w") as handle:
+            json.dump(attempts, handle)
+        best, _ = best_records()
+
+        with open(os.path.join(STATE, "refresh-failed"), "w") as handle:
+            handle.write("".join(f"{name.split('|', 1)[0]}\n" for name in refresh_failed))
+
+    # Write the winning set into every store that already has a keychain item.
+    if MODE == "sync":
+        for store in stores:
+            label = store["label"]
+            if creds.get(label) is None:
+                continue
+            fresh = read_creds(store["service"])
+            if fresh is None:
+                continue
+            written = merge_into(fresh, best)
+            if not written:
+                continue
+            ok, error = write_creds(store["service"], accounts.get(label) or os.environ.get("USER"), fresh)
+            if ok:
+                creds[label] = fresh
+                say(f"synced {written} credential(s) into {label}")
+            else:
+                say(f"could not write {label} keychain item: {error}")
+
+    # Report servers with no credential anywhere. Keys look like
+    # "plugin:linear:linear|638130d5ab3558f4"; the suffix is Claude Code's
+    # hash of the server config, so compare on the part before the pipe.
+    expected = set()
+    for store in stores:
+        expected |= expected_servers(store)
+    known = {name.split("|", 1)[0] for name in best}
+    missing = sorted(expected - known)
+    with open(os.path.join(STATE, "missing"), "w") as handle:
+        handle.write("".join(f"{name}\n" for name in missing))
+
+    if MODE == "status":
+        print()
+        for store in stores:
+            document = creds.get(store["label"])
+            if document is None:
+                print(f"{store['label']:<10} no keychain item ({store['service']})")
+                continue
+            servers = []
+            for name, record in sorted((document.get("mcpOAuth") or {}).items()):
+                if not name.startswith("plugin:") or not has_creds(record):
+                    continue
+                display = name.split("|", 1)[0].removeprefix("plugin:")
+                expires = record.get("expiresAt")
+                if expires is None:
+                    state = "no expiry"
+                elif expires <= NOW_MS:
+                    state = "expired"
+                else:
+                    state = f"expires in {max(0, (expires - NOW_MS) // 60000)}m"
+                refresh_state = "refresh ok" if record.get("refreshToken") else "no refresh token"
+                servers.append(f"{display} ({state}, {refresh_state})")
+            print(f"{store['label']:<10} {'; '.join(servers) if servers else 'no plugin credentials'}")
+        if missing:
+            print()
+            print("needs a one-time sign-in (then this script copies it everywhere):")
+            for name in missing:
+                print(f"  claude mcp login {name}")
+        return 0
+
+    if missing:
+        say("needs a one-time sign-in: " + ", ".join(missing))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+PY
+}
+
+cmd_check() {
+  local missing="$STATE_DIR/missing"
+  local failed="$STATE_DIR/refresh-failed"
+  : > "$missing"
+  : > "$failed"
+
+  run_python sync | while IFS= read -r line; do
+    [[ -n $line ]] && log "$line"
+  done
+
+  if [[ -s $failed ]]; then
+    local server
+    while IFS= read -r server; do
+      log "$server: token refresh failed; retrying in 30m"
+      cooldown_ok "refresh-${server//[^A-Za-z0-9._-]/_}" &&
+        notify "Claude plugin token refresh failed" "$server — run: claude mcp login $server"
+    done < "$failed"
+  fi
+
+  if [[ -s $missing ]]; then
+    local server
+    while IFS= read -r server; do
+      log "$server: no credential in any profile; run 'claude mcp login $server' once"
+      cooldown_ok "missing-${server//[^A-Za-z0-9._-]/_}" &&
+        notify "Claude plugin needs sign-in" "$server — run: claude mcp login $server"
+    done < "$missing"
+  fi
+}
+
+cmd_status() {
+  print "Claude MCP credentials:"
+  run_python status
+  print
+  print -n "agent:       "
+  if launchctl print "gui/$UID/$LABEL" >/dev/null 2>&1; then
+    print "loaded (every ${INTERVAL}s)"
+  else
+    print "not loaded"
+  fi
+  print    "log:         $LOG"
+}
+
+cmd_install() {
+  local self=$SELF
+  mkdir -p "${PLIST:h}" "${LOG:h}" "$HOME/.local/bin"
+  ln -sf "$self" "$HOME/.local/bin/claude-mcp-auth-keepalive"
+
+  cat >"$PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$LABEL</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$self</string>
+    <string>check</string>
+  </array>
+  <key>StartInterval</key><integer>$INTERVAL</integer>
+  <key>RunAtLoad</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>$LOG</string>
+  <key>StandardErrorPath</key><string>$LOG</string>
+</dict>
+</plist>
+EOF
+
+  launchctl bootout "gui/$UID/$LABEL" 2>/dev/null
+  launchctl bootstrap "gui/$UID" "$PLIST"
+  print "Installed $PLIST (checks every ${INTERVAL}s). Log: $LOG"
+
+  # Seed every profile right away instead of waiting for the first interval.
+  cmd_check
+  cmd_status
+}
+
+cmd_uninstall() {
+  launchctl bootout "gui/$UID/$LABEL" 2>/dev/null
+  rm -f "$PLIST" "$HOME/.local/bin/claude-mcp-auth-keepalive"
+  print "Removed $LABEL"
+}
+
+case "${1:-}" in
+  check) cmd_check ;;
+  status) cmd_status ;;
+  install) cmd_install ;;
+  uninstall) cmd_uninstall ;;
+  *) print -u2 "usage: ${0:t} check|status|install|uninstall"; exit 64 ;;
+esac
