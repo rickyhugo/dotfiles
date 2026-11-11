@@ -1,7 +1,10 @@
 local M = {}
 local module_source = debug.getinfo(1, "S").source:gsub("^@", "")
 local terminal = "com.superlogical.terminal.shell"
-local card_shape = { columns = 52, rows = 30 }
+local theme = { background = "#1e1e2e", foreground = "#cdd6f4", scheme = "dark" }
+local card = { columns = 100, rows = 30, max_width = 0.9, max_height = 0.85 }
+local opening_bounds = { 0.2, 0.15, 0.6, 0.7 }
+local tick_seconds = 0.1
 
 local function exec(argv, options)
 	local result, err = rex.exec(argv, options)
@@ -14,6 +17,10 @@ local function failure(result, message)
 		return message .. ": " .. result.stderr
 	end
 	return message .. " (exit " .. tostring(result.code) .. ")"
+end
+
+local function rex_error_code(err)
+	return tostring(err):match("code=([%w_]+)")
 end
 
 local function roots_snapshot(roots)
@@ -42,24 +49,13 @@ local function physical_directory(path)
 	return (result.stdout:gsub("\n$", ""))
 end
 
-local function sessions()
-	local result, err = rex.call("session.list", {})
-	assert(result, err)
-	local entries = {}
-	for _, session in ipairs(result.sessions) do
-		local label = session.label
-		if not label or label == "" then
-			label = "Untitled"
-		end
-		entries[#entries + 1] = { session_id = session.session_id, label = label }
+local function script_path(name)
+	local directory = assert(module_source:match("^(.*/)"), "Cannot locate the picker scripts")
+	if directory:sub(1, 1) ~= "/" then
+		directory = physical_directory(directory)
+		assert(directory ~= "", "Cannot locate the picker scripts")
 	end
-	table.sort(entries, function(a, b)
-		if a.label == b.label then
-			return a.session_id < b.session_id
-		end
-		return a.label < b.label
-	end)
-	return entries
+	return directory:gsub("/$", "") .. "/" .. name
 end
 
 local function display(text)
@@ -68,6 +64,35 @@ local function display(text)
 			return string.format("\\x%02x", char:byte())
 		end)
 	)
+end
+
+local function hex(text)
+	return (text:gsub(".", function(char)
+		return string.format("%02x", char:byte())
+	end))
+end
+
+local function unhex(text)
+	assert(#text % 2 == 0 and not text:find("[^0-9a-f]"), "Picker returned an invalid selection")
+	return (text:gsub("..", function(pair)
+		return string.char(tonumber(pair, 16))
+	end))
+end
+
+local function shell_quote(text)
+	-- Adjacent shell quotes keep literal braces from becoming fzf placeholders.
+	return "'" .. text:gsub("'", "'\\''"):gsub("{", "{''") .. "'"
+end
+
+local function attach_all()
+	-- session.view requires access to the sessions on this connection.
+	local listed, err = rex.call("session.attach_all", { event_scope = "session" })
+	assert(listed, err)
+	return listed.sessions or {}
+end
+
+local function shell_layout()
+	return rex.layout.block({ flavor = terminal })
 end
 
 local function repository_labels(entries)
@@ -98,73 +123,6 @@ local function repository_labels(entries)
 	end
 end
 
-local function hex(text)
-	return (text:gsub(".", function(char)
-		return string.format("%02x", char:byte())
-	end))
-end
-
-local function unhex(text)
-	assert(#text % 2 == 0 and not text:find("[^0-9a-f]"), "Picker returned an invalid selection")
-	return (text:gsub("..", function(pair)
-		return string.char(tonumber(pair, 16))
-	end))
-end
-
-local function repository_records(view, notice)
-	local records = {
-		"status\t" .. display(
-			notice
-				or view.notice
-				or (
-					#view.entries == 0 and "No Git repositories found under the configured roots"
-					or "Ctrl-R refreshes repositories"
-				)
-		) .. "\t",
-	}
-	local labels = repository_labels(view.entries)
-	for position, entry in ipairs(view.entries) do
-		local label = labels[position]
-		records[#records + 1] = hex(entry.path) .. "\t" .. display(label) .. "\t" .. hex(label)
-	end
-	return records
-end
-
-local function repository_selection(row)
-	local encoded_path, shown, encoded_label = row:match("^([^\t]+)\t([^\t]*)\t([^\t]*)$")
-	assert(encoded_path, "Picker returned an invalid selection")
-	local path, label = unhex(encoded_path), unhex(encoded_label)
-	assert(
-		path:sub(1, 1) == "/"
-			and not path:find("%z")
-			and not label:find("%z")
-			and label ~= ""
-			and display(label) == shown,
-		"Picker returned an invalid selection"
-	)
-	return { entry = { path = path }, label = label }
-end
-
-local function shell_quote(text)
-	-- Adjacent shell quotes keep literal braces from becoming fzf placeholders.
-	return "'" .. text:gsub("'", "'\\''"):gsub("{", "{''") .. "'"
-end
-
-local function reload_command(roots)
-	local directory = assert(module_source:match("^(.*/)"), "Cannot locate repository rows adapter")
-	if directory:sub(1, 1) ~= "/" then
-		directory = physical_directory(directory)
-	end
-	local args, err = rex.json.encode({ roots = roots })
-	assert(args, err)
-	local argv =
-		{ "rex", "--autostart=false", "do", directory:gsub("/$", "") .. "/repository-picker-rows.lua", "--args", args }
-	for position, arg in ipairs(argv) do
-		argv[position] = shell_quote(arg)
-	end
-	return table.concat(argv, " ")
-end
-
 local function git_root(cwd)
 	if type(cwd) ~= "string" or cwd:sub(1, 1) ~= "/" or cwd:find("%z") then
 		return
@@ -178,25 +136,39 @@ local function git_root(cwd)
 	end
 end
 
-local function repository_session(root)
-	local listed, list_err = rex.call("session.list", {})
-	assert(listed, list_err)
+local function block_cwd(session_id, block_id)
+	local process, err = rex.call("block.method", {
+		session_id = session_id,
+		block_id = block_id,
+		method = "process",
+		args = {},
+	})
+	assert(process or rex_error_code(err) == "not_found", err)
+	if not process then
+		return
+	end
+	local cwd = process.foreground and process.foreground.cwd
+	if type(cwd) ~= "string" or cwd == "" then
+		cwd = process.child and process.child.cwd
+	end
+	return type(cwd) == "string" and cwd or nil
+end
+
+local function repository_terminal(root)
 	local status, status_err = rex.call("server.status", {})
 	assert(status, status_err)
 	assert(type(status.host_id) == "string" and status.host_id ~= "", "Cannot identify the local Rex host")
 	local ordered, roots = {}, { [root] = root }
-	local current, picker = os.getenv("REX_SESSION"), os.getenv("REX_BLOCK")
-	for _, session in ipairs(listed.sessions) do
-		if session.session_id == current then
+	for _, session in ipairs(attach_all()) do
+		if session.session_id == rex.session_id then
 			table.insert(ordered, 1, session)
 		else
 			ordered[#ordered + 1] = session
 		end
 	end
 	for _, session in ipairs(ordered) do
-		local attached, attach_err = rex.call("session.attach", { session_id = session.session_id })
-		assert(attached or tostring(attach_err):match("code=([%w_]+)") == "session_not_found", attach_err)
-		local view = attached and assert(attached.view, "Session attachment returned no view")
+		local view, view_err = rex.call("session.view", { session_id = session.session_id })
+		assert(view or rex_error_code(view_err) == "session_not_found", view_err)
 		for _, window in ipairs(view and view.windows or {}) do
 			for _, layer in ipairs(window.layers or {}) do
 				if layer.kind == "tiled" then
@@ -204,27 +176,19 @@ local function repository_session(root)
 						if
 							block.flavor == terminal
 							and block.host_id == status.host_id
-							and block.block_id ~= picker
+							and block.block_id ~= rex.block_id
 						then
-							local process, process_err = rex.call("block.method", {
-								session_id = session.session_id,
-								block_id = block.block_id,
-								method = "process",
-								args = {},
-							})
-							assert(process or tostring(process_err):match("code=([%w_]+)") == "not_found", process_err)
-							if process then
-								local cwd = process.foreground and process.foreground.cwd
-								if type(cwd) ~= "string" or cwd == "" then
-									cwd = process.child and process.child.cwd
+							local cwd = block_cwd(session.session_id, block.block_id)
+							if cwd then
+								if roots[cwd] == nil then
+									roots[cwd] = git_root(cwd) or false
 								end
-								if type(cwd) == "string" then
-									if roots[cwd] == nil then
-										roots[cwd] = git_root(cwd) or false
-									end
-									if roots[cwd] == root then
-										return session.session_id
-									end
+								if roots[cwd] == root then
+									return {
+										session_id = session.session_id,
+										window_id = window.window_id,
+										block_id = block.block_id,
+									}
 								end
 							end
 						end
@@ -235,39 +199,68 @@ local function repository_session(root)
 	end
 end
 
+local function project_view(view, notice)
+	local labels, rows = repository_labels(view.entries), {}
+	for position, entry in ipairs(view.entries) do
+		rows[position] = { id = entry.path, text = labels[position] }
+	end
+	return { rows = rows, notice = notice or view.notice }
+end
+
+local stale = " Ctrl-R refreshes this list."
+
 local sources = {
-	repos = {
+	projects = {
 		action = "project_picker",
-		title = "Open Git Repository Session",
+		title = "Open Project Session",
+		label = "Projects",
 		keywords = "project repo git picker",
+		prompt = "project> ",
+		help = "Enter: open or reuse its session   Ctrl-R: rescan   Esc: close",
 		empty = "No Git repositories found under the configured roots",
-		select = function(entry, label)
+		refresh_on_load = true,
+		valid_id = function(id)
+			return id:sub(1, 1) == "/"
+		end,
+		load = function(invocation, fresh)
+			local roots = roots_snapshot(invocation.roots)
+			local index = require("repository-index")
+			local prior = index.cached(roots)
+			if not fresh then
+				return project_view(prior)
+			end
+			local view, err = index.open(roots, true)
+			return project_view(view or prior, not view and ("Refresh failed. " .. err) or nil)
+		end,
+		select = function(choice)
 			local checked = exec({
 				"/bin/sh",
 				"-c",
 				'[ -d "$1" ] && [ -r "$1" ] && [ -x "$1" ] && { [ -f "$1/.git/HEAD" ] || [ -f "$1/.git" ]; }'
 					.. ' && cd "$1" && pwd -P',
 				"rex-picker-selected",
-				entry.path,
+				choice.id,
 			})
-			if checked.code ~= 0 then
-				return nil, "Repository is no longer available. Ctrl-R refreshes this list."
-			end
-			local root = git_root(entry.path)
+			local root = checked.code == 0 and git_root(choice.id)
 			if not root or root ~= checked.stdout:gsub("\n$", "") then
-				return nil, "Repository is no longer available. Ctrl-R refreshes this list."
+				return nil, "Repository is no longer available." .. stale
 			end
-			local existing = repository_session(root)
+			local existing = repository_terminal(root)
 			if existing then
-				rex.client.queue("session.select", { session_id = existing })
+				local focused, focus_err = rex.call("session.focus_block", {
+					session_id = existing.session_id,
+					block_id = existing.block_id,
+				})
+				assert(focused or rex_error_code(focus_err) == "not_found", focus_err)
+				rex.client.queue("session.select", { session_id = existing.session_id, window_id = existing.window_id })
 				return true
 			end
 			local session, err = rex.call("session.create", {
-				label = label,
+				label = choice.text,
 				initial_windows = {
 					{
 						window_label = "Terminal",
-						layout = rex.layout.block({ flavor = terminal, options = { cwd = entry.path } }),
+						layout = rex.layout.block({ flavor = terminal, options = { cwd = choice.id } }),
 					},
 				},
 			})
@@ -278,85 +271,222 @@ local sources = {
 	},
 	sessions = {
 		action = "session_picker",
-		title = "Switch Rex Session",
-		keywords = "session switch existing detached picker",
-		empty = "No existing Rex sessions",
-		entries = sessions,
-		select = function(entry)
-			rex.client.queue("session.select", { session_id = entry.session_id })
+		title = "Switch Session",
+		label = "Sessions",
+		keywords = "session switch picker",
+		prompt = "session> ",
+		help = "Enter: switch   Ctrl-R: refresh   Esc: close",
+		empty = "No Rex sessions",
+		valid_id = function(id)
+			return id:match("^session:[%w%-]+$") ~= nil
+		end,
+		load = function()
+			local listed, err = rex.call("session.list", {})
+			assert(listed, err)
+			local labels, counts, rows = {}, {}, {}
+			for position, session in ipairs(listed.sessions or {}) do
+				local label = session.label
+				if type(label) ~= "string" or label == "" then
+					label = "Untitled"
+				end
+				labels[position] = label
+				counts[label] = (counts[label] or 0) + 1
+			end
+			for position, session in ipairs(listed.sessions or {}) do
+				local text = labels[position]
+				if counts[text] > 1 then
+					text = text .. "  #" .. session.session_id:sub(-8)
+				end
+				if session.session_id == rex.session_id then
+					text = text .. "  (current)"
+				end
+				rows[position] = { id = session.session_id, text = text }
+			end
+			return { rows = rows }
+		end,
+		select = function(choice)
+			attach_all()
+			local view, err = rex.call("session.view", { session_id = choice.id })
+			if not view then
+				assert(rex_error_code(err) == "session_not_found", err)
+				return nil, "That session no longer exists." .. stale
+			end
+			if #(view.windows or {}) == 0 then
+				local window, window_err = rex.call("session.new_window", {
+					session_id = choice.id,
+					window_label = "Terminal",
+					layout = shell_layout(),
+				})
+				assert(window, window_err)
+			end
+			rex.client.queue("session.select", { session_id = choice.id })
+			return true
 		end,
 	},
 }
 
-local function valid_dimension(length)
-	return type(length) == "number" and length > 0 and length < math.huge and length % 1 == 0
+local function records(source, view)
+	local status = view.notice or (#view.rows == 0 and source.empty) or ""
+	local lines = { "status\t" .. display(status) .. "\t" }
+	for _, row in ipairs(view.rows) do
+		lines[#lines + 1] = hex(row.id) .. "\t" .. display(row.text) .. "\t" .. hex(row.text)
+	end
+	return table.concat(lines, "\0") .. "\0"
 end
 
-local function wait_for_size(client_id)
-	for attempt = 1, 50 do
-		local size, err = rex.call("block.method", {
-			session_id = rex.session_id,
-			block_id = rex.block_id,
-			method = "size",
-			args = {},
-		})
-		assert(size, "Cannot read picker terminal size: " .. tostring(err or "no size returned"))
-		local owner = type(size) == "table" and size.owner
-		if type(owner) == "string" and owner ~= "" then
-			if client_id == nil then
-				client_id = owner
-			end
-			if
-				owner == client_id
-				and valid_dimension(size.columns)
-				and valid_dimension(size.rows)
-				and type(size.desired) == "table"
-			then
-				for _, desired in ipairs(size.desired) do
-					if
-						type(desired) == "table"
-						and desired.client_id == client_id
-						and desired.columns == size.columns
-						and desired.rows == size.rows
-					then
-						return size
-					end
+local function decode(source, row)
+	local encoded_id, shown, encoded_text = row:match("^([^\t]+)\t([^\t]*)\t([^\t]*)$")
+	assert(encoded_id, "Picker returned an invalid selection")
+	local id, text = unhex(encoded_id), unhex(encoded_text)
+	assert(
+		source.valid_id(id) and not id:find("%z") and not text:find("%z") and text ~= "" and display(text) == shown,
+		"Picker returned an invalid selection"
+	)
+	return { id = id, text = text }
+end
+
+local function reload_command(invocation)
+	local args, err = rex.json.encode({ source = invocation.source, roots = invocation.roots })
+	assert(args, err)
+	local argv = { "rex", "--autostart=false", "do", script_path("picker-rows.lua"), "--args", args }
+	for position, arg in ipairs(argv) do
+		argv[position] = shell_quote(arg)
+	end
+	return table.concat(argv, " ")
+end
+
+local function valid_dimension(length)
+	return type(length) == "number" and length > 0 and length % 1 == 0
+end
+
+local function round(fraction)
+	return math.floor(fraction * 10000 + 0.5) / 10000
+end
+
+function M.fitted_bounds(bounds, viewport)
+	local width = math.min(card.columns / viewport.columns, card.max_width)
+	local height = math.min(card.rows / viewport.rows, card.max_height)
+	local fitted = { round((1 - width) / 2), round((1 - height) / 2), round(width), round(height) }
+	for position = 1, 4 do
+		if math.abs(fitted[position] - bounds[position]) > 0.002 then
+			return fitted
+		end
+	end
+end
+
+local function own_layer()
+	local view, err = rex.call("session.view", { session_id = rex.session_id })
+	assert(view, err)
+	for _, window in ipairs(view.windows or {}) do
+		for _, layer in ipairs(window.layers or {}) do
+			for _, block in ipairs(layer.kind == "floating" and layer.blocks or {}) do
+				if block.block_id == rex.block_id then
+					return window, layer
 				end
 			end
 		end
-		if attempt < 50 then
-			rex.sleep(0.01)
-		end
 	end
-	error("Timed out waiting for the target Rex app to report and apply the picker terminal size", 0)
+	error("Cannot locate the picker layer in its Rex session", 0)
 end
 
-local function centered_margin(length, target)
-	return math.max(0, math.floor((length - target) / 2))
-end
-
-local function choose(source, entries, client_id, view, query, notice, command)
-	assert(view or #entries > 0, source.empty)
-	local records, by_row = {}, {}
-	if view then
-		records = repository_records(view, notice)
-	else
-		for index, entry in ipairs(entries) do
-			records[index] = index .. "\t" .. display(entry.label)
-			by_row[records[index]] = { entry = entry, label = entry.label }
+local function app_size(block_id, client_id)
+	local size, err = rex.call("block.method", {
+		session_id = rex.session_id,
+		block_id = block_id,
+		method = "size",
+		args = {},
+	})
+	assert(size, err)
+	for _, desired in ipairs(size.desired or {}) do
+		if desired.client_id == client_id and valid_dimension(desired.columns) and valid_dimension(desired.rows) then
+			return desired
 		end
 	end
-	local size = wait_for_size(client_id)
+end
+
+local function block_rect(node, block_id)
+	if not node then
+		return
+	end
+	if node.block_id == block_id then
+		return node.rect
+	end
+	if node.split then
+		return block_rect(node.split.before, block_id) or block_rect(node.split.after, block_id)
+	end
+end
+
+local function window_viewport(window, client_id)
+	local has_terminal = false
+	for _, layer in ipairs(window.layers or {}) do
+		for _, block in ipairs(layer.kind == "tiled" and layer.blocks or {}) do
+			if
+				block.flavor == terminal and (not window.zoomed_block_id or window.zoomed_block_id == block.block_id)
+			then
+				has_terminal = true
+				local rect = window.zoomed_block_id and { 0, 0, 1, 1 } or block_rect(layer.layout, block.block_id)
+				assert(rect and rect[3] > 0 and rect[4] > 0, "Cannot measure the tiled terminal's layout rectangle")
+				local desired = app_size(block.block_id, client_id)
+				if desired then
+					return { columns = desired.columns / rect[3], rows = desired.rows / rect[4] }
+				end
+			end
+		end
+	end
+	assert(has_terminal, "Cannot size the picker. Open it in a window with a visible tiled terminal")
+end
+
+local function geometry(client_id)
+	if not (rex.session_id and rex.block_id) then
+		return function() end
+	end
+	attach_all()
+	return function()
+		local window, layer = own_layer()
+		local viewport = window_viewport(window, client_id)
+		local bounds = viewport and M.fitted_bounds(layer.bounds, viewport)
+		if bounds then
+			local resized, err = rex.call(
+				"session.resize_layer",
+				{ session_id = rex.session_id, layer_id = layer.layer_id, bounds = bounds }
+			)
+			assert(resized, err)
+		end
+	end
+end
+
+local function run_fzf(argv, stdin, fit)
+	local handle, start_err = rex.exec.start(argv, {
+		stdin = stdin,
+		env = { FZF_DEFAULT_OPTS = "", FZF_DEFAULT_OPTS_FILE = "" },
+	})
+	assert(handle, "Cannot start fzf: " .. tostring(start_err))
+	local ok, result = pcall(function()
+		while true do
+			fit()
+			local result, wait_err = handle:wait(tick_seconds)
+			if result then
+				return result
+			end
+			assert(wait_err == "timeout", "Waiting for fzf failed: " .. tostring(wait_err))
+		end
+	end)
+	if not ok then
+		pcall(handle.kill, handle)
+		error(result, 0)
+	end
+	return result
+end
+
+local function choose(source, view, query, command, fit)
 	local argv = {
 		"fzf",
 		"--read0",
 		"--print0",
+		"--print-query",
 		"--layout=reverse",
 		"--border=rounded",
-		"--margin=" .. centered_margin(size.rows, card_shape.rows) .. "," .. centered_margin(
-			size.columns,
-			card_shape.columns
-		),
+		"--border-label= " .. source.label .. " ",
 		"--padding=1,2",
 		"--color=bg:#1e1e2e",
 		"--delimiter=\t",
@@ -365,90 +495,106 @@ local function choose(source, entries, client_id, view, query, notice, command)
 		"--no-multi",
 		"--info=hidden",
 		"--no-separator",
-		"--prompt=> ",
+		"--prompt=" .. source.prompt,
+		"--header=" .. source.help,
+		"--header-lines=1",
+		"--with-shell=/bin/sh -c",
 	}
-	if view then
-		argv[#argv + 1] = "--print-query"
-		argv[#argv + 1] = "--header-lines=1"
-		argv[#argv + 1] = "--with-shell=/bin/sh -c"
+	if source.refresh_on_load then
 		argv[#argv + 1] = "--bind"
 		argv[#argv + 1] = "load:unbind(load)+reload-sync:" .. command
-		argv[#argv + 1] = "--bind"
-		argv[#argv + 1] = "ctrl-r:reload-sync:" .. command
-		argv[#argv + 1] = "--query"
-		argv[#argv + 1] = query
 	end
-	local result = exec(argv, {
-		stdin = #records > 0 and table.concat(records, "\0") .. "\0" or "",
-		env = { FZF_DEFAULT_OPTS = "", FZF_DEFAULT_OPTS_FILE = "" },
-	})
-	local row, returned_query = result.stdout
-	if view and result.code ~= 130 then
-		returned_query, row = row:match("^([^%z]*)%z(.*)$")
+	for _, arg in ipairs({ "--bind", "ctrl-r:reload-sync:" .. command, "--query", query }) do
+		argv[#argv + 1] = arg
 	end
+	local result = run_fzf(argv, records(source, view), fit)
 	if result.code == 1 or result.code == 130 then
 		return
 	end
 	assert(result.code == 0, failure(result, "Picker failed"))
+	local returned_query, row = result.stdout:match("^([^%z]*)%z(.*)$")
 	assert(row and row:sub(-1) == "\0" and not row:sub(1, -2):find("%z"), "Picker returned an invalid selection")
-	local selected = view and repository_selection(row:sub(1, -2)) or by_row[row:sub(1, -2)]
-	assert(selected, "Picker returned an invalid selection")
-	if view then
-		return { entry = selected.entry, label = selected.label, query = returned_query }
-	end
-	return selected.entry
+	local choice = decode(source, row:sub(1, -2))
+	choice.query = returned_query
+	return choice
 end
 
-local function target_client(ctx)
-	local result, err = rex.call("client.list", { kinds = { "app" }, session_id = ctx.session_id })
-	assert(result, err)
-	for _, client in ipairs(result.clients) do
-		if client.client_id == ctx.client_id then
-			return client.client_id
+local function app_client(ctx, requested)
+	local listed, err = rex.call("client.list", { kinds = { "app" } })
+	assert(listed, err)
+	local apps, connected = {}, {}
+	for _, client in ipairs(listed.clients or {}) do
+		if client.connection_state ~= "lost" then
+			apps[#apps + 1] = client.client_id
+			connected[client.client_id] = true
 		end
 	end
-	if #result.clients == 1 then
-		if not ctx.client_id then
-			return result.clients[1].client_id
-		end
-		local caller = rex.call("client.inspect", { client_id = ctx.client_id })
-		if caller and caller.client and caller.client.info and caller.client.info.kind == "cli" then
-			return result.clients[1].client_id
+	if requested ~= nil then
+		assert(connected[requested], "No connected Rex app has client ID " .. tostring(requested))
+		return requested
+	end
+	if ctx.client_id and connected[ctx.client_id] then
+		return ctx.client_id
+	end
+	if #apps == 1 then
+		return apps[1]
+	end
+	error("Cannot tell which Rex app to use. Press the shortcut in that app, or pass client_id=<app client ID>", 0)
+end
+
+local function picker_window(session_id, block_id)
+	attach_all()
+	local view, err = rex.call("session.view", { session_id = session_id })
+	assert(view, err)
+	local windows = view.windows or {}
+	if #windows == 0 then
+		local window, window_err = rex.call("session.new_window", {
+			session_id = session_id,
+			window_label = "Terminal",
+			layout = shell_layout(),
+		})
+		assert(window, window_err)
+		return window.window_id
+	end
+	for _, window in ipairs(windows) do
+		for _, layer in ipairs(window.layers or {}) do
+			for _, block in ipairs(layer.blocks or {}) do
+				if block_id and block.block_id == block_id then
+					return window.window_id
+				end
+			end
 		end
 	end
-	error("Open the picker using the shortcut in the target Rex app", 0)
+	return view.active_window_id or windows[1].window_id
 end
 
 function M.setup(config)
 	local roots = roots_snapshot(config.roots)
-	local directory = assert(module_source:match("^(.*/)"), "Cannot locate picker runner")
-	if directory:sub(1, 1) ~= "/" then
-		directory = physical_directory(directory)
-		assert(directory ~= "", "Cannot locate picker runner directory")
-	end
-	local runner = directory:gsub("/$", "") .. "/picker-runner.lua"
-	for kind, source in pairs(sources) do
-		local title = source.title
+	local runner = script_path("picker-runner.lua")
+	for name, source in pairs(sources) do
 		rex.action({
 			name = source.action,
-			title = title,
+			title = source.title,
 			category = "Session",
 			keywords = source.keywords,
-			run = function(ctx)
-				local client = target_client(ctx)
-				local snapshot, encode_err = rex.json.encode({ kind = kind, roots = roots, client_id = client })
+			args = { client_id = "string?" },
+			run = function(ctx, args)
+				assert(ctx.session_id, "Open the picker from a Rex session")
+				local client = app_client(ctx, args and args.client_id)
+				local snapshot, encode_err = rex.json.encode({ source = name, roots = roots, client_id = client })
 				assert(snapshot, encode_err)
 				local layer, err = rex.session.new_layer({
 					session_id = ctx.session_id,
-					bounds = { 0, 0, 1, 1 },
+					window_id = picker_window(ctx.session_id, ctx.block_id),
+					bounds = opening_bounds,
 					focus = true,
 					layout = {
 						block = {
 							flavor = terminal,
-							label = title,
+							label = source.label,
 							options = {
 								command = { "rex", "-C", client, "do", runner, "--args", snapshot },
-								theme = { background = "#1e1e2e", foreground = "#cdd6f4", scheme = "dark" },
+								theme = theme,
 							},
 						},
 					},
@@ -461,39 +607,28 @@ function M.setup(config)
 end
 
 function M.run(invocation)
-	local source = assert(sources[invocation.kind], "Unknown picker kind")
-	local roots = roots_snapshot(invocation.roots)
-	if invocation.kind == "repos" then
-		local index = require("repository-index")
-		local view = index.cached(roots)
-		local command = reload_command(roots)
-		local query, notice = "", view.notice
-		while true do
-			local choice = choose(source, view.entries, invocation.client_id, view, query, notice, command)
-			if not choice then
-				return
-			end
-			query = choice.query
-			local selected, select_err = source.select(choice.entry, choice.label)
-			if selected then
-				return
-			end
-			view, notice = index.cached(roots), select_err
+	local source = assert(sources[invocation.source], "Unknown picker source")
+	local command = reload_command(invocation)
+	local fit = geometry(invocation.client_id)
+	local view, query = source.load(invocation, false), ""
+	while true do
+		local choice = choose(source, view, query, command, fit)
+		if not choice then
+			return
 		end
-	end
-	local entry = choose(source, source.entries(roots), invocation.client_id)
-	if entry then
-		source.select(entry)
+		query = choice.query
+		local selected, notice = source.select(choice)
+		if selected then
+			return
+		end
+		view = source.load(invocation, false)
+		view.notice = notice
 	end
 end
 
-function M.repository_rows(invocation)
-	local roots = roots_snapshot(invocation.roots)
-	local index = require("repository-index")
-	local prior = index.cached(roots)
-	local view, err = index.open(roots, true)
-	local notice = not view and ("Refresh failed. " .. err) or nil
-	io.write(table.concat(repository_records(view or prior, notice), "\0") .. "\0")
+function M.rows(invocation)
+	local source = assert(sources[invocation.source], "Unknown picker source")
+	io.write(records(source, source.load(invocation, true)))
 end
 
 return M
