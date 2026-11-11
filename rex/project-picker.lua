@@ -3,8 +3,11 @@ local module_source = debug.getinfo(1, "S").source:gsub("^@", "")
 local terminal = "com.superlogical.terminal.shell"
 local theme = { background = "#1e1e2e", foreground = "#cdd6f4", scheme = "dark" }
 local card = { columns = 100, rows = 30, max_width = 0.9, max_height = 0.85 }
-local opening_bounds = { 0.2, 0.15, 0.6, 0.7 }
-local tick_seconds = 0.1
+local script_directory
+local vm_picker_slots = {
+	projects = {},
+	sessions = {},
+}
 
 local function exec(argv, options)
 	local result, err = rex.exec(argv, options)
@@ -50,12 +53,15 @@ local function physical_directory(path)
 end
 
 local function script_path(name)
-	local directory = assert(module_source:match("^(.*/)"), "Cannot locate the picker scripts")
-	if directory:sub(1, 1) ~= "/" then
-		directory = physical_directory(directory)
-		assert(directory ~= "", "Cannot locate the picker scripts")
+	if not script_directory then
+		local directory = assert(module_source:match("^(.*/)"), "Cannot locate the picker scripts")
+		if directory:sub(1, 1) ~= "/" then
+			directory = physical_directory(directory)
+			assert(directory ~= "", "Cannot locate the picker scripts")
+		end
+		script_directory = directory:gsub("/$", "")
 	end
-	return directory:gsub("/$", "") .. "/" .. name
+	return script_directory .. "/" .. name
 end
 
 local function display(text)
@@ -276,31 +282,29 @@ local sources = {
 		keywords = "session switch picker",
 		prompt = "session> ",
 		help = "Enter: switch   Ctrl-R: refresh   Esc: close",
-		empty = "No Rex sessions",
+		empty = "No other Rex sessions",
 		valid_id = function(id)
 			return id:match("^session:[%w%-]+$") ~= nil
 		end,
-		load = function()
+		load = function(invocation)
 			local listed, err = rex.call("session.list", {})
 			assert(listed, err)
-			local labels, counts, rows = {}, {}, {}
-			for position, session in ipairs(listed.sessions or {}) do
-				local label = session.label
-				if type(label) ~= "string" or label == "" then
-					label = "Untitled"
+			local current = invocation.session_id or rex.session_id
+			local counts, rows = {}, {}
+			for _, session in ipairs(listed.sessions or {}) do
+				if session.session_id ~= current then
+					local label = session.label
+					if type(label) ~= "string" or label == "" then
+						label = "Untitled"
+					end
+					rows[#rows + 1] = { id = session.session_id, text = label }
+					counts[label] = (counts[label] or 0) + 1
 				end
-				labels[position] = label
-				counts[label] = (counts[label] or 0) + 1
 			end
-			for position, session in ipairs(listed.sessions or {}) do
-				local text = labels[position]
-				if counts[text] > 1 then
-					text = text .. "  #" .. session.session_id:sub(-8)
+			for _, row in ipairs(rows) do
+				if counts[row.text] > 1 then
+					row.text = row.text .. "  #" .. row.id:sub(-8)
 				end
-				if session.session_id == rex.session_id then
-					text = text .. "  (current)"
-				end
-				rows[position] = { id = session.session_id, text = text }
 			end
 			return { rows = rows }
 		end,
@@ -346,7 +350,8 @@ local function decode(source, row)
 end
 
 local function reload_command(invocation)
-	local args, err = rex.json.encode({ source = invocation.source, roots = invocation.roots })
+	local args, err =
+		rex.json.encode({ source = invocation.source, roots = invocation.roots, session_id = invocation.session_id })
 	assert(args, err)
 	local argv = { "rex", "--autostart=false", "do", script_path("picker-rows.lua"), "--args", args }
 	for position, arg in ipairs(argv) do
@@ -363,41 +368,21 @@ local function round(fraction)
 	return math.floor(fraction * 10000 + 0.5) / 10000
 end
 
-function M.fitted_bounds(bounds, viewport)
-	local width = math.min(card.columns / viewport.columns, card.max_width)
-	local height = math.min(card.rows / viewport.rows, card.max_height)
-	local fitted = { round((1 - width) / 2), round((1 - height) / 2), round(width), round(height) }
-	for position = 1, 4 do
-		if math.abs(fitted[position] - bounds[position]) > 0.002 then
-			return fitted
-		end
-	end
+function M.fitted_bounds(viewport)
+	local width = viewport and math.min(card.columns / viewport.columns, card.max_width) or card.max_width
+	local height = viewport and math.min(card.rows / viewport.rows, card.max_height) or card.max_height
+	return { round((1 - width) / 2), round((1 - height) / 2), round(width), round(height) }
 end
 
-local function own_layer()
-	local view, err = rex.call("session.view", { session_id = rex.session_id })
-	assert(view, err)
-	for _, window in ipairs(view.windows or {}) do
-		for _, layer in ipairs(window.layers or {}) do
-			for _, block in ipairs(layer.kind == "floating" and layer.blocks or {}) do
-				if block.block_id == rex.block_id then
-					return window, layer
-				end
-			end
-		end
-	end
-	error("Cannot locate the picker layer in its Rex session", 0)
-end
-
-local function app_size(block_id, client_id)
+local function app_size(session_id, block_id, client_id)
 	local size, err = rex.call("block.method", {
-		session_id = rex.session_id,
+		session_id = session_id,
 		block_id = block_id,
 		method = "size",
 		args = {},
 	})
-	assert(size, err)
-	for _, desired in ipairs(size.desired or {}) do
+	assert(size or rex_error_code(err) == "not_found", err)
+	for _, desired in ipairs(size and size.desired or {}) do
 		if desired.client_id == client_id and valid_dimension(desired.columns) and valid_dimension(desired.rows) then
 			return desired
 		end
@@ -416,71 +401,27 @@ local function block_rect(node, block_id)
 	end
 end
 
-local function window_viewport(window, client_id)
-	local has_terminal = false
+local function window_viewport(session_id, window, client_id)
 	for _, layer in ipairs(window.layers or {}) do
 		for _, block in ipairs(layer.kind == "tiled" and layer.blocks or {}) do
 			if
 				block.flavor == terminal and (not window.zoomed_block_id or window.zoomed_block_id == block.block_id)
 			then
-				has_terminal = true
 				local rect = window.zoomed_block_id and { 0, 0, 1, 1 } or block_rect(layer.layout, block.block_id)
-				assert(rect and rect[3] > 0 and rect[4] > 0, "Cannot measure the tiled terminal's layout rectangle")
-				local desired = app_size(block.block_id, client_id)
-				if desired then
-					return { columns = desired.columns / rect[3], rows = desired.rows / rect[4] }
+				if rect and rect[3] > 0 and rect[4] > 0 then
+					local desired = app_size(session_id, block.block_id, client_id)
+					if desired then
+						return { columns = desired.columns / rect[3], rows = desired.rows / rect[4] }
+					end
 				end
 			end
 		end
 	end
-	assert(has_terminal, "Cannot size the picker. Open it in a window with a visible tiled terminal")
 end
 
-local function geometry(client_id)
-	if not (rex.session_id and rex.block_id) then
-		return function() end
-	end
-	attach_all()
-	return function()
-		local window, layer = own_layer()
-		local viewport = window_viewport(window, client_id)
-		local bounds = viewport and M.fitted_bounds(layer.bounds, viewport)
-		if bounds then
-			local resized, err = rex.call(
-				"session.resize_layer",
-				{ session_id = rex.session_id, layer_id = layer.layer_id, bounds = bounds }
-			)
-			assert(resized, err)
-		end
-	end
-end
-
-local function run_fzf(argv, stdin, fit)
-	local handle, start_err = rex.exec.start(argv, {
-		stdin = stdin,
-		env = { FZF_DEFAULT_OPTS = "", FZF_DEFAULT_OPTS_FILE = "" },
-	})
-	assert(handle, "Cannot start fzf: " .. tostring(start_err))
-	local ok, result = pcall(function()
-		while true do
-			fit()
-			local result, wait_err = handle:wait(tick_seconds)
-			if result then
-				return result
-			end
-			assert(wait_err == "timeout", "Waiting for fzf failed: " .. tostring(wait_err))
-		end
-	end)
-	if not ok then
-		pcall(handle.kill, handle)
-		error(result, 0)
-	end
-	return result
-end
-
-local function choose(source, view, query, command, fit)
+local function fzf_argv(source, view, query, command, executable)
 	local argv = {
-		"fzf",
+		executable or "fzf",
 		"--read0",
 		"--print0",
 		"--print-query",
@@ -500,23 +441,34 @@ local function choose(source, view, query, command, fit)
 		"--header-lines=1",
 		"--with-shell=/bin/sh -c",
 	}
-	if source.refresh_on_load then
+	if source.refresh_on_load and #view.rows == 0 then
 		argv[#argv + 1] = "--bind"
 		argv[#argv + 1] = "load:unbind(load)+reload-sync:" .. command
 	end
 	for _, arg in ipairs({ "--bind", "ctrl-r:reload-sync:" .. command, "--query", query }) do
 		argv[#argv + 1] = arg
 	end
-	local result = run_fzf(argv, records(source, view), fit)
+	return argv
+end
+
+local function decode_choice(source, output)
+	local query, row = output:match("^([^%z]*)%z(.*)$")
+	assert(row and row:sub(-1) == "\0" and not row:sub(1, -2):find("%z"), "Picker returned an invalid selection")
+	local choice = decode(source, row:sub(1, -2))
+	choice.query = query
+	return choice
+end
+
+local function choose(source, view, query, command, executable)
+	local result = exec(fzf_argv(source, view, query, command, executable), {
+		stdin = records(source, view),
+		env = { FZF_DEFAULT_OPTS = "", FZF_DEFAULT_OPTS_FILE = "" },
+	})
 	if result.code == 1 or result.code == 130 then
 		return
 	end
 	assert(result.code == 0, failure(result, "Picker failed"))
-	local returned_query, row = result.stdout:match("^([^%z]*)%z(.*)$")
-	assert(row and row:sub(-1) == "\0" and not row:sub(1, -2):find("%z"), "Picker returned an invalid selection")
-	local choice = decode(source, row:sub(1, -2))
-	choice.query = returned_query
-	return choice
+	return decode_choice(source, result.stdout)
 end
 
 local function app_client(ctx, requested)
@@ -542,10 +494,94 @@ local function app_client(ctx, requested)
 	error("Cannot tell which Rex app to use. Press the shortcut in that app, or pass client_id=<app client ID>", 0)
 end
 
-local function picker_window(session_id, block_id)
+local function find_picker(view, owner, label)
+	for _, window in ipairs(view.windows or {}) do
+		for _, layer in ipairs(window.layers or {}) do
+			local blocks = layer.blocks or {}
+			if
+				layer.kind == "floating"
+				and #blocks == 1
+				and blocks[1].flavor == terminal
+				and blocks[1].label == label
+			then
+				return {
+					session_id = owner,
+					window_id = window.window_id,
+					layer_id = layer.layer_id,
+					block_ids = { blocks[1].block_id },
+				}
+			end
+		end
+	end
+end
+
+local function discover_picker(label, session_id)
+	local sessions = attach_all()
+	local current, err = rex.call("session.view", { session_id = session_id })
+	assert(current, err)
+	local instance = find_picker(current, session_id, label)
+	if instance then
+		return instance, current
+	end
+	for _, session in ipairs(sessions) do
+		if session.session_id ~= session_id then
+			local view, view_err = rex.call("session.view", { session_id = session.session_id })
+			assert(view or rex_error_code(view_err) == "session_not_found", view_err)
+			instance = view and find_picker(view, session.session_id, label)
+			if instance then
+				return instance, current
+			end
+		end
+	end
+	return nil, current
+end
+
+local function restore_picker(instance, client)
 	attach_all()
-	local view, err = rex.call("session.view", { session_id = session_id })
-	assert(view, err)
+	local restored, err = rex.call("session.set_layer_state", {
+		session_id = instance.session_id,
+		layer_id = instance.layer_id,
+		state = "normal",
+		focus = true,
+	})
+	if not restored then
+		local code = rex_error_code(err)
+		if code == "not_found" or code == "session_not_found" then
+			return false
+		end
+		local view = rex.call("session.view", { session_id = instance.session_id })
+		if view then
+			for _, window in ipairs(view.windows or {}) do
+				for _, layer in ipairs(window.layers or {}) do
+					assert(layer.layer_id ~= instance.layer_id, err)
+				end
+			end
+		else
+			local listed, list_err = rex.call("session.list", {})
+			assert(listed, list_err)
+			for _, session in ipairs(listed.sessions or {}) do
+				assert(session.session_id ~= instance.session_id, err)
+			end
+		end
+		return false
+	end
+	local selected, select_err = rex.call("client.perform", {
+		client_id = client,
+		session_id = instance.session_id,
+		action = "session.select",
+		args = { session_id = instance.session_id, window_id = instance.window_id },
+	})
+	assert(selected, select_err)
+	return true
+end
+
+local function picker_window(session_id, block_id, view)
+	if not view then
+		attach_all()
+		local err
+		view, err = rex.call("session.view", { session_id = session_id })
+		assert(view, err)
+	end
 	local windows = view.windows or {}
 	if #windows == 0 then
 		local window, window_err = rex.call("session.new_window", {
@@ -554,23 +590,132 @@ local function picker_window(session_id, block_id)
 			layout = shell_layout(),
 		})
 		assert(window, window_err)
-		return window.window_id
+		return window
 	end
 	for _, window in ipairs(windows) do
 		for _, layer in ipairs(window.layers or {}) do
 			for _, block in ipairs(layer.blocks or {}) do
 				if block_id and block.block_id == block_id then
-					return window.window_id
+					return window
 				end
 			end
 		end
 	end
-	return view.active_window_id or windows[1].window_id
+	for _, window in ipairs(windows) do
+		if window.window_id == view.active_window_id then
+			return window
+		end
+	end
+	return windows[1]
+end
+
+local function launch_file(launch, key, contents)
+	-- os.tmpname creates a private file on the Rex host. Reopening keeps its mode.
+	local name = assert(os.tmpname())
+	launch[key] = name
+	local file, open_err = io.open(name, "wb")
+	assert(file, open_err)
+	local written, write_err = file:write(contents)
+	local closed, close_err = file:close()
+	assert(written, write_err)
+	assert(closed, close_err)
+	return name
+end
+
+local function cleanup_launch(launch)
+	for _, key in ipairs({ "input_file", "choice_file" }) do
+		if launch[key] then
+			os.remove(launch[key])
+			launch[key] = nil
+		end
+	end
+end
+
+local function recover_picker_launch(slot)
+	local launch = slot.pending_launch
+	attach_all()
+	local view, err = rex.call("session.view", { session_id = launch.session_id })
+	if not view then
+		local listed, list_err = rex.call("session.list", {})
+		assert(listed, list_err)
+		for _, session in ipairs(listed.sessions or {}) do
+			assert(session.session_id ~= launch.session_id, err)
+		end
+	end
+	slot.instance = view and find_picker(view, launch.session_id, launch.label) or nil
+	if slot.instance then
+		launch.input_file, launch.choice_file = nil, nil
+	else
+		cleanup_launch(launch)
+	end
+	slot.discovered = slot.instance ~= nil
+	slot.pending_launch = nil
+end
+
+local function create_picker(slot, launch, args)
+	launch.session_id = args.session_id
+	launch.label = args.layout.block.label
+	slot.pending_launch = launch
+	slot.discovered = false
+	local ok, layer = pcall(function()
+		local created, err = rex.session.new_layer(args)
+		assert(created, err)
+		assert(created.layer_id and created.block_ids and created.block_ids[1], "Invalid picker layer response")
+		return created
+	end)
+	if not ok then
+		pcall(recover_picker_launch, slot)
+		error(layer, 0)
+	end
+	slot.instance = {
+		session_id = args.session_id,
+		window_id = args.window_id,
+		layer_id = layer.layer_id,
+		block_ids = layer.block_ids,
+	}
+	slot.pending_launch = nil
+	slot.discovered = true
+	launch.input_file, launch.choice_file = nil, nil
+	return layer
 end
 
 function M.setup(config)
 	local roots = roots_snapshot(config.roots)
 	local runner = script_path("picker-runner.lua")
+	local launcher = script_path("picker-launch.sh")
+	local captured = exec({
+		os.getenv("SHELL") or "/bin/zsh",
+		"-lc",
+		[[
+fzf=$(command -v fzf) || fzf=
+mise=$(command -v mise) || mise=
+if [ -n "$fzf" ] && [ -n "$mise" ] && [ "$fzf" -ef "$mise" ]; then
+  fzf=$("$mise" which fzf) || fzf=
+fi
+case "$fzf" in
+  /*)
+    if [ -f "$fzf" ] && [ -x "$fzf" ]; then
+      printf '\000rex-picker-environment\000%s\000%s\000' "$PATH" "$fzf"
+      exit 0
+    fi
+    ;;
+esac
+printf '%s\n' 'Cannot resolve an absolute picker fzf executable' >&2
+exit 1
+]],
+	})
+	assert(captured.code == 0, failure(captured, "Cannot read login-shell picker environment (PATH and fzf)"))
+	local environment = {}
+	environment.path, environment.fzf = captured.stdout:match("%zrex%-picker%-environment%z([^%z]+)%z([^%z]+)%z")
+	assert(
+		environment.path and environment.fzf:sub(1, 1) == "/",
+		"Cannot read login-shell picker environment (PATH and absolute fzf executable required)"
+	)
+	local path_prepend = {}
+	for directory in environment.path:gmatch("[^:]+") do
+		path_prepend[#path_prepend + 1] = directory
+	end
+	require("repository-index").cached(roots)
 	for name, source in pairs(sources) do
 		rex.action({
 			name = source.action,
@@ -581,26 +726,81 @@ function M.setup(config)
 			run = function(ctx, args)
 				assert(ctx.session_id, "Open the picker from a Rex session")
 				local client = app_client(ctx, args and args.client_id)
-				local snapshot, encode_err = rex.json.encode({ source = name, roots = roots, client_id = client })
-				assert(snapshot, encode_err)
-				local layer, err = rex.session.new_layer({
-					session_id = ctx.session_id,
-					window_id = picker_window(ctx.session_id, ctx.block_id),
-					bounds = opening_bounds,
-					focus = true,
-					layout = {
-						block = {
-							flavor = terminal,
-							label = source.label,
-							options = {
-								command = { "rex", "-C", client, "do", runner, "--args", snapshot },
-								theme = theme,
+				local slot = vm_picker_slots[name][client]
+				if not slot then
+					slot = { busy = false, discovered = false }
+					vm_picker_slots[name][client] = slot
+				end
+				if slot.busy then
+					return
+				end
+				slot.busy = true
+				local launch = {}
+				local ok, result = pcall(function()
+					local current
+					local label = "rex.picker." .. name .. ":" .. client
+					if slot.pending_launch then
+						recover_picker_launch(slot)
+					end
+					if not slot.instance and not slot.discovered then
+						slot.instance, current = discover_picker(label, ctx.session_id)
+						slot.discovered = true
+					end
+					if slot.instance then
+						if restore_picker(slot.instance, client) then
+							return { layer_id = slot.instance.layer_id, block_ids = slot.instance.block_ids }
+						end
+						slot.instance = nil
+					end
+					local window = picker_window(ctx.session_id, ctx.block_id, current)
+					launch.window_id = window.window_id
+					launch.bounds = M.fitted_bounds(window_viewport(ctx.session_id, window, client))
+					launch.path_prepend = path_prepend
+					local invocation = {
+						source = name,
+						roots = roots,
+						client_id = client,
+						session_id = ctx.session_id,
+						fzf = environment.fzf,
+					}
+					local view = source.load(invocation, false)
+					launch_file(launch, "input_file", records(source, view))
+					invocation.choice_file = launch_file(launch, "choice_file", "")
+					local snapshot, encode_err = rex.json.encode(invocation)
+					assert(snapshot, encode_err)
+					launch.command =
+						{ "/bin/sh", launcher, launch.input_file, launch.choice_file, client, runner, snapshot }
+					for _, arg in ipairs(fzf_argv(source, view, "", reload_command(invocation), environment.fzf)) do
+						launch.command[#launch.command + 1] = arg
+					end
+					return create_picker(slot, launch, {
+						session_id = ctx.session_id,
+						window_id = launch.window_id,
+						bounds = launch.bounds,
+						focus = true,
+						layout = {
+							block = {
+								flavor = terminal,
+								label = label,
+								options = {
+									shell = "none",
+									login = false,
+									command = launch.command,
+									path_prepend = launch.path_prepend,
+									theme = theme,
+								},
 							},
 						},
-					},
-				})
-				assert(layer, err)
-				return layer
+					})
+				end)
+				slot.busy = false
+				if not ok then
+					if slot.pending_launch ~= launch then
+						cleanup_launch(launch)
+					end
+					error(result, 0)
+				end
+				return result
 			end,
 		})
 	end
@@ -608,11 +808,29 @@ end
 
 function M.run(invocation)
 	local source = assert(sources[invocation.source], "Unknown picker source")
+	local query, notice = "", nil
+	if invocation.choice_file ~= nil then
+		local path = invocation.choice_file
+		assert(type(path) == "string" and path ~= "" and not path:find("%z"), "Invalid picker choice file")
+		local file, open_err = io.open(path, "rb")
+		assert(file, open_err)
+		local output, read_err = file:read("*a")
+		local closed, close_err = file:close()
+		assert(output, read_err)
+		assert(closed, close_err)
+		local choice = decode_choice(source, output)
+		local selected
+		selected, notice = source.select(choice)
+		if selected then
+			return
+		end
+		query = choice.query
+	end
 	local command = reload_command(invocation)
-	local fit = geometry(invocation.client_id)
-	local view, query = source.load(invocation, false), ""
+	local view = source.load(invocation, false)
+	view.notice = notice or view.notice
 	while true do
-		local choice = choose(source, view, query, command, fit)
+		local choice = choose(source, view, query, command, invocation.fzf)
 		if not choice then
 			return
 		end

@@ -1,11 +1,12 @@
 import argparse
 import json
-from pathlib import Path
 import shutil
 import subprocess
 import tempfile
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 
 def main():
@@ -22,6 +23,7 @@ def main():
     def command(*args, text=False):
         result = subprocess.run(
             [options.rex, "--autostart=false", *args],
+            check=False,
             capture_output=True,
             text=True,
             timeout=30,
@@ -95,21 +97,22 @@ def main():
     def floating(session):
         return [layer for layer in layers(session) if layer["kind"] == "floating"]
 
-    def sized(session, block):
+    def sized(session, block, fixed_card):
         size = api(
             "block.method", session_id=session, block_id=block, method="size", args={}
         )
         return (
             size
             if size.get("owner") == options.client
-            and 60 <= size["columns"] <= 104
-            and 12 <= size["rows"] <= 34
+            and size["columns"] >= 60
+            and size["rows"] >= 12
+            and (not fixed_card or (size["columns"] <= 104 and size["rows"] <= 34))
             else None
         )
 
-    def check_geometry(session, block):
+    def check_geometry(session, block, fixed_card=True):
         size = eventually(
-            lambda: sized(session, block),
+            lambda: sized(session, block, fixed_card),
             "Picker did not become a readable, bounded card",
         )
         layer = next(
@@ -137,42 +140,130 @@ def main():
                         return True
         return False
 
+    def presented_at(session, block):
+        size = api(
+            "block.method", session_id=session, block_id=block, method="size", args={}
+        )
+        return next(
+            (
+                report["updated_at"]
+                for report in size.get("desired") or []
+                if report["client_id"] == options.client
+            ),
+            None,
+        )
+
+    def presented_after(session, block, previous):
+        current = presented_at(session, block)
+        return bool(current and current != previous)
+
     token = uuid.uuid4().hex[:10]
+    for session in api("session.list").get("sessions") or []:
+        for layer in layers(session["session_id"]):
+            if layer["kind"] == "floating" and any(
+                (block.get("label") or "").startswith("rex.picker.")
+                for block in layer.get("blocks") or []
+            ):
+                raise AssertionError("Close existing pickers before running live tests")
     try:
-        source = create("picker-test-source-" + token)
+        source_label = "picker-test-source-" + token
+        source = create(source_label)
         target_label = "picker-test-target-" + token
         target = create(target_label)
+        away = create("picker-test-away-" + token)
+        away_window = api(
+            "session.new_window",
+            session_id=away,
+            window_label="Away fixture",
+            layout={
+                "block": {
+                    "flavor": "com.superlogical.terminal.shell",
+                    "options": {"command": ["/bin/sleep", "300"]},
+                }
+            },
+        )
+        away_block = away_window["block_ids"][0]
         select(source)
         project = open_picker(source, "project_picker")
+        first_bounds = floating(source)[0]["bounds"]
         eventually(
             lambda: ".dotfiles" in screen(source, project),
             "Repository list never appeared",
         )
         print("PASS project picker opens from an empty session")
-        project_size = check_geometry(source, project)
-        original_layer = floating(source)[0]
-        original_width, original_height = original_layer["bounds"][2:]
-        for scale in (1.25, 0.75):
-            width = min(0.9, original_width * scale)
-            height = min(0.85, original_height * scale)
-            api(
-                "session.resize_layer",
-                session_id=source,
-                layer_id=original_layer["layer_id"],
-                bounds=[(1 - width) / 2, (1 - height) / 2, width, height],
-            )
-            eventually(
-                lambda: abs(floating(source)[0]["bounds"][2] - original_width) < 0.015,
-                "Picker did not refit after its terminal grid changed",
-            )
-            check_geometry(source, project)
-        print(
-            "PASS picker refits and recenters after both larger and smaller app size reports"
+        check_geometry(source, project, fixed_card=False)
+        assert floating(source)[0]["bounds"] == first_bounds, (
+            "Picker resized while appearing"
         )
         send(source, project, "picker-no-match-" + token)
         eventually(
             lambda: ".dotfiles" not in screen(source, project),
             "Typing did not filter repository rows",
+        )
+        assert open_picker(source, "project_picker") == project, (
+            "Reopening the project picker created another block"
+        )
+        assert len(floating(source)) == 1, "Duplicate project picker is open"
+        assert "picker-no-match-" + token in screen(source, project), (
+            "Reusing the picker reset its query"
+        )
+        api(
+            "session.set_layer_state",
+            session_id=source,
+            layer_id=floating(source)[0]["layer_id"],
+            state="minimized",
+        )
+        assert open_picker(source, "project_picker") == project, (
+            "Restoring the minimized picker created another block"
+        )
+        assert floating(source)[0].get("state") != "minimized", (
+            "Reopening did not restore the minimized picker"
+        )
+        command("config", "reload", "--json")
+        previous_away = presented_at(away, away_block)
+        select(away)
+        eventually(
+            lambda: presented_after(away, away_block, previous_away),
+            "The app did not switch away from the picker",
+        )
+        previous_project = presented_at(source, project)
+        assert open_picker(target, "project_picker") == project, (
+            "Reload or another session created another project picker"
+        )
+        eventually(
+            lambda: presented_after(source, project, previous_project),
+            "Project reuse did not switch back to its owning session",
+        )
+        assert not floating(target), "Another session got a duplicate picker"
+        assert not view(target).get("windows"), "Reusing a picker created a window"
+        assert "picker-no-match-" + token in screen(source, project), (
+            "Rediscovering the picker reset its query"
+        )
+        sessions = open_picker(source, "session_picker")
+        eventually(
+            lambda: target_label in screen(source, sessions),
+            "Session picker did not open beside the project picker",
+        )
+        assert len(floating(source)) == 2, "Different pickers did not coexist"
+        previous_away = presented_at(away, away_block)
+        select(away)
+        eventually(
+            lambda: presented_after(away, away_block, previous_away),
+            "The app did not switch away from the session picker",
+        )
+        previous_sessions = presented_at(source, sessions)
+        assert open_picker(target, "session_picker") == sessions, (
+            "Another session got a duplicate session picker"
+        )
+        eventually(
+            lambda: presented_after(source, sessions, previous_sessions),
+            "Session reuse did not switch back to its owning session",
+        )
+        assert len(floating(source)) == 2, "Reopening sessions created a duplicate"
+        key(source, sessions, "escape")
+        eventually(lambda: len(floating(source)) == 1, "Session picker did not close")
+        print(
+            "PASS each picker is reused across sessions and config reload without resetting its query"
         )
         key(source, project, "ctrl+u")
         send(source, project, ".dotfiles")
@@ -181,9 +272,63 @@ def main():
             "Repository query did not find .dotfiles",
         )
         print("PASS real keyboard input filters repositories")
+        assert floating(source)[0]["bounds"] == first_bounds, (
+            "Picker resized after appearing"
+        )
+        print("PASS picker opens at final bounds without post-open resizing")
         key(source, project, "escape")
         eventually(lambda: not floating(source), "Escape left the project picker open")
         print("PASS project picker cancellation cleans up its layer")
+
+        def concurrent_open(_):
+            return command(
+                "-C",
+                options.client,
+                "do",
+                "project_picker",
+                "-s",
+                source,
+                "client_id=" + options.client,
+                "--json",
+            )
+
+        with ThreadPoolExecutor(max_workers=6) as workers:
+            opened = list(workers.map(concurrent_open, range(6)))
+        blocks = {result["block_ids"][0] for result in opened if result}
+        assert len(blocks) == 1, "Concurrent opens returned different picker blocks"
+        assert len(floating(source)) == 1, "Concurrent opens created duplicate pickers"
+        project = blocks.pop()
+        eventually(
+            lambda: "project>" in screen(source, project),
+            "Concurrent picker launch did not render",
+        )
+        key(source, project, "escape")
+        eventually(lambda: not floating(source), "Concurrent picker did not close")
+        print(
+            "PASS concurrent opens create only one picker and cancellation permits reopening"
+        )
+
+        project = open_picker(source, "project_picker")
+        eventually(
+            lambda: "project>" in screen(source, project),
+            "Project picker did not render before interrupt",
+        )
+        key(source, project, "ctrl+c")
+        eventually(lambda: not floating(source), "Ctrl-C left the project picker open")
+        print("PASS Ctrl-C cancels the direct picker process")
+
+        project = open_picker(source, "project_picker")
+        first_bounds = floating(source)[0]["bounds"]
+        eventually(
+            lambda: ".dotfiles" in screen(source, project),
+            "Warm project picker did not render",
+        )
+        project_size = check_geometry(source, project)
+        assert floating(source)[0]["bounds"] == first_bounds, (
+            "Warm picker resized while appearing"
+        )
+        key(source, project, "escape")
+        eventually(lambda: not floating(source), "Warm project picker did not close")
 
         host_window = view(source)["active_window_id"]
         repository = Path(
@@ -232,6 +377,18 @@ def main():
             lambda: "project>" in screen(source, project),
             "Repository picker did not reopen",
         )
+        api(
+            "session.focus_window",
+            session_id=source,
+            window_id=repo_window["window_id"],
+        )
+        assert open_picker(source, "project_picker") == project, (
+            "Another tab got a duplicate project picker"
+        )
+        assert view(source)["active_window_id"] == host_window, (
+            "Reusing the picker did not focus its original tab"
+        )
+        key(source, project, "ctrl+r")
         send(source, project, repository_label)
         try:
             eventually(
@@ -253,11 +410,27 @@ def main():
         print("PASS repository selection focuses an existing inactive matching tab")
 
         sessions = open_picker(source, "session_picker")
+        first_bounds = floating(source)[0]["bounds"]
         eventually(
             lambda: target_label in screen(source, sessions),
             "Session list never appeared",
         )
+        assert source_label not in screen(source, sessions), "Current session is listed"
+        key(source, sessions, "ctrl+r")
+        eventually(
+            lambda: target_label in screen(source, sessions),
+            "Refreshed session list never appeared",
+        )
+        assert source_label not in screen(source, sessions), (
+            "Refresh listed the current session"
+        )
+        print(
+            "PASS session picker excludes the current session before and after refresh"
+        )
         session_size = check_geometry(source, sessions)
+        assert floating(source)[0]["bounds"] == first_bounds, (
+            "Session picker resized while appearing"
+        )
         assert abs(project_size["columns"] - session_size["columns"]) <= 2
         assert abs(project_size["rows"] - session_size["rows"]) <= 2
         print(
@@ -290,8 +463,11 @@ def main():
         )
         sessions = open_picker(target, "session_picker")
         eventually(
-            lambda: target_label in screen(target, sessions),
+            lambda: source_label in screen(target, sessions),
             "Reopened session picker did not render",
+        )
+        assert target_label not in screen(target, sessions), (
+            "Reopened picker lists its current session"
         )
         check_geometry(target, sessions)
         key(target, sessions, "escape")

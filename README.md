@@ -31,7 +31,7 @@ Codex, and OpenCode all read that directory. The entries live in the
   and models onto each harness.
 - `claude/`, `codex/`, `opencode/`: helper agents such as `poteto-agent`, one
   file per host.
-- `skills/`: my own skills, such as `gh-auth`.
+- `skills/`: my own skills
 
 ## Neovim project tools
 

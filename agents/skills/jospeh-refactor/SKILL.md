@@ -1,6 +1,6 @@
 ---
 name: joseph-refactor
-description: Use this to refactor existing code, a complement to /deslop
+description: Use this to refactor existing code a la joseph.
 ---
 
 # Objective

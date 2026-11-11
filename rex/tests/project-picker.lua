@@ -6,7 +6,9 @@ local rex_dir = script:gsub("/tests/[^/]*$", "")
 package.path = rex_dir .. "/?.lua;" .. package.path
 
 local TERM = "com.superlogical.terminal.shell"
+local FZF = "/opt/tools/fzf"
 local real_write = io.write
+local owned_files = {}
 
 local function quote(text)
 	return "'" .. text:gsub("'", "'\\''") .. "'"
@@ -72,9 +74,13 @@ local function install(env)
 		windows = {},
 		layers = {},
 		focused = {},
+		restored = {},
+		performed = {},
 		resizes = {},
 		encoded = {},
 		fzf_runs = {},
+		exec_runs = {},
+		login_calls = 0,
 		client_lists = {},
 		session_list = env.sessions or {},
 		views = env.views or {},
@@ -141,17 +147,31 @@ local function install(env)
 		end,
 		["session.resize_layer"] = function(args)
 			fake.resizes[#fake.resizes + 1] = args.bounds
-			for _, window in ipairs(fake.views[args.session_id].windows) do
-				for _, layer in ipairs(window.layers) do
+			error("picker must never resize after creation")
+		end,
+		["session.set_layer_state"] = function(args)
+			if not fake.subscribed then
+				return fail_call("conflict")
+			end
+			local view = fake.views[args.session_id]
+			if not view then
+				return fail_call("session_not_found")
+			end
+			for _, window in ipairs(view.windows or {}) do
+				for _, layer in ipairs(window.layers or {}) do
 					if layer.layer_id == args.layer_id then
-						layer.bounds = args.bounds
+						layer.state = args.state
+						view.active_window_id = window.window_id
+						fake.restored[#fake.restored + 1] = args
+						return { revision = 1 }
 					end
 				end
 			end
-			if env.on_resize then
-				env.on_resize(fake, args.bounds)
-			end
-			return { revision = 1 }
+			return fail_call("not_found")
+		end,
+		["client.perform"] = function(args)
+			fake.performed[#fake.performed + 1] = args
+			return {}
 		end,
 		["client.list"] = function(args)
 			fake.client_lists[#fake.client_lists + 1] = args
@@ -161,49 +181,43 @@ local function install(env)
 	local function call(method, args)
 		fake.calls[#fake.calls + 1] = method
 		fake.log[#fake.log + 1] = { method = method, args = args }
+		if env.on_call then
+			env.on_call(method, args, fake)
+		end
 		if env.rpc_errors and env.rpc_errors[method] then
 			return nil, env.rpc_errors[method]
 		end
 		local handler = assert(handlers[method], "unexpected rex.call " .. method)
 		return handler(args)
 	end
-	local exec = setmetatable({
-		start = function(argv, options)
-			assert(argv[1] == "fzf", "only fzf is started asynchronously")
-			if env.start_error then
-				return nil, env.start_error
+	local function exec(argv, options)
+		fake.exec_runs[#fake.exec_runs + 1] = { argv = argv, options = options }
+		if argv[2] == "-lc" then
+			fake.login_calls = fake.login_calls + 1
+			if env.login_error then
+				return nil, env.login_error
 			end
-			local run = { argv = argv, stdin = options.stdin, waits = 0 }
-			fake.fzf_runs[#fake.fzf_runs + 1] = run
-			return {
-				wait = function(_, seconds)
-					assert(seconds and seconds <= 0.5, "fzf waits are short so geometry keeps up")
-					run.waits = run.waits + 1
-					if env.on_wait then
-						local result, err = env.on_wait(fake, run.waits)
-						if result or err then
-							return result, err
-						end
-					end
-					if run.waits <= (env.ticks or 0) then
-						return nil, "timeout"
-					end
-					return fake.fzf(argv, options.stdin, #fake.fzf_runs)
-				end,
-				running = function()
-					return not run.killed
-				end,
-				kill = function()
-					run.killed = true
-				end,
-			}
-		end,
-	}, {
-		__call = function(_, argv)
-			assert(argv[1] ~= "fzf", "fzf must not block the geometry loop")
-			return real_exec(argv)
-		end,
-	})
+			if env.login_prefix then
+				return real_exec({ "/bin/zsh", "-lc", env.login_prefix .. argv[3] })
+			end
+			return env.login_result
+				or {
+					code = 0,
+					stdout = "startup noise\n\0rex-picker-environment\0/opt/tools:/usr/bin:/bin\0"
+						.. FZF
+						.. "\0after\n",
+					stderr = "",
+				}
+		end
+		if argv[1] == "fzf" or argv[1] == (env.fzf_executable or FZF) then
+			if env.exec_error then
+				return nil, env.exec_error
+			end
+			fake.fzf_runs[#fake.fzf_runs + 1] = { argv = argv, stdin = options.stdin, options = options }
+			return fake.fzf(argv, options.stdin, #fake.fzf_runs)
+		end
+		return real_exec(argv)
+	end
 	rawset(_G, "rex", {
 		session_id = env.session_id,
 		block_id = env.block_id,
@@ -211,6 +225,9 @@ local function install(env)
 		exec = exec,
 		json = {
 			encode = function(value)
+				if env.encode_error then
+					return nil, env.encode_error
+				end
 				local text = json_encode(value)
 				fake.encoded[text] = value
 				return text
@@ -226,7 +243,40 @@ local function install(env)
 				fake.calls[#fake.calls + 1] = "session.new_layer"
 				fake.log[#fake.log + 1] = { method = "session.new_layer", args = args }
 				fake.layers[#fake.layers + 1] = args
-				return { layer_id = "layer:1", block_ids = { "block:picker" } }
+				local command = args.layout.block.options.command
+				owned_files[#owned_files + 1] = command[3]
+				owned_files[#owned_files + 1] = command[4]
+				if env.layer_error then
+					return nil, env.layer_error
+				end
+				if env.layer_throw then
+					error(env.layer_throw)
+				end
+				local number = #fake.layers
+				local layer_id = "layer:" .. number
+				local block_id = number == 1 and "block:picker" or "block:picker" .. number
+				local view = assert(fake.views[args.session_id])
+				for _, window in ipairs(view.windows or {}) do
+					if window.window_id == args.window_id then
+						window.layers = window.layers or {}
+						window.layers[#window.layers + 1] = {
+							layer_id = layer_id,
+							kind = "floating",
+							state = "normal",
+							blocks = {
+								{
+									block_id = block_id,
+									flavor = args.layout.block.flavor,
+									label = args.layout.block.label,
+								},
+							},
+						}
+					end
+				end
+				if env.on_layer then
+					env.on_layer(args, fake)
+				end
+				return env.layer_response or { layer_id = layer_id, block_ids = { block_id } }
 			end,
 		},
 		client = {
@@ -247,7 +297,7 @@ local function install(env)
 	package.loaded["repository-index"] = {
 		cached = function()
 			fake.cached_calls = (fake.cached_calls or 0) + 1
-			return env.views_sequence and env.views_sequence[fake.cached_calls] or env.index_view
+			return env.views_sequence and env.views_sequence[fake.cached_calls] or env.index_view or { entries = {} }
 		end,
 		open = env.open,
 	}
@@ -286,7 +336,7 @@ local function terminal(block_id, extra)
 	return block
 end
 
-local function picker_view(bounds)
+local function picker_view()
 	return view_with({
 		{
 			layer_id = "layer:tiled",
@@ -294,13 +344,6 @@ local function picker_view(bounds)
 			bounds = { 0, 0, 1, 1 },
 			layout = { block_id = "block:host", rect = { 0, 0, 1, 1 } },
 			blocks = { terminal("block:host") },
-		},
-		{
-			layer_id = "layer:picker",
-			kind = "floating",
-			bounds = bounds,
-			layout = { block_id = "block:picker", rect = bounds },
-			blocks = { terminal("block:picker") },
 		},
 	})
 end
@@ -355,6 +398,23 @@ local function argument(argv, flag)
 	end
 end
 
+local function read_file(path)
+	local file = assert(io.open(path, "rb"))
+	local text = assert(file:read("*a"))
+	assert(file:close())
+	return text
+end
+
+local function write_file(path, text)
+	local file = assert(io.open(path, "wb"))
+	assert(file:write(text))
+	assert(file:close())
+end
+
+local function launch_invocation(fake, command)
+	return assert(fake.encoded[command[7]], "launch snapshot")
+end
+
 local function near(a, b)
 	return math.abs(a - b) < 0.0005
 end
@@ -384,6 +444,574 @@ local function open(fake, action, ctx, args)
 	return fake.actions[action].run(ctx, args or {})
 end
 
+local function close_picker(fake, result)
+	for _, view in pairs(fake.views) do
+		for _, window in ipairs(view.windows or {}) do
+			for index = #(window.layers or {}), 1, -1 do
+				if window.layers[index].layer_id == result.layer_id then
+					table.remove(window.layers, index)
+				end
+			end
+		end
+	end
+end
+
+test("each picker reuses its IDs without refreshing rows, files, processes, or geometry", function()
+	for _, action in ipairs({ "project_picker", "session_picker" }) do
+		local env = { views = { ["session:a"] = picker_view() } }
+		local fake = install(env)
+		local ctx = { session_id = "session:a", client_id = "client:app" }
+		local first = open(fake, action, ctx)
+		local command = fake.layers[1].layout.block.options.command
+		local rows = read_file(command[3])
+		local files, processes, cached = #owned_files, #fake.exec_runs, fake.cached_calls
+		local probes, lists = count(fake.calls, "block.method"), count(fake.calls, "session.list")
+		env.index_view = { entries = { { path = tmp .. "/changed", label = "changed" } } }
+		fake.session_list = { { session_id = "session:changed", label = "changed" } }
+		fake.size = { desired = { size_report(400, 120, 1) } }
+		for _ = 1, 3 do
+			fake.subscribed = false
+			local reused = fake.actions[action].run(ctx, {})
+			expect_equal(reused.layer_id, first.layer_id, "same layer")
+			expect_equal(reused.block_ids[1], first.block_ids[1], "same block")
+		end
+		expect_equal(#fake.layers, 1, "one picker")
+		expect_equal(#owned_files, files, "no new files")
+		expect_equal(#fake.exec_runs, processes, "no processes")
+		expect_equal(fake.cached_calls, cached, "no repository reload")
+		expect_equal(count(fake.calls, "session.list"), lists, "no session row reload")
+		expect_equal(count(fake.calls, "block.method"), probes, "no geometry probes")
+		expect_equal(count(fake.calls, "session.attach_all"), 4, "fresh connections get session access before reuse")
+		expect_equal(count(fake.calls, "session.view"), 1, "current discovery view also places the picker")
+		expect_equal(#fake.resizes, 0, "no resize")
+		expect_equal(read_file(command[3]), rows, "existing snapshot unchanged")
+	end
+end)
+
+test("reuse restores a minimized picker across sessions only for its explicit target app", function()
+	local fake = install({
+		views = { ["session:a"] = picker_view(), ["session:b"] = view_with({}) },
+		app_clients = { { client_id = "client:one" }, { client_id = "client:two" } },
+	})
+	local first = open(fake, "project_picker", { session_id = "session:a", client_id = "client:two" })
+	local layer = fake.views["session:a"].windows[1].layers[2]
+	layer.state = "minimized"
+	fake.views["session:a"].active_window_id = "window:elsewhere"
+	local result = fake.actions.project_picker.run(
+		{ session_id = "session:b", block_id = "block:elsewhere", client_id = "client:cli" },
+		{ client_id = "client:two" }
+	)
+	expect_equal(result.layer_id, first.layer_id, "reuse across sessions")
+	expect_equal(layer.state, "normal", "minimized layer restored")
+	expect_equal(fake.restored[1].focus, true, "layer raises and focuses")
+	expect_equal(fake.views["session:a"].active_window_id, "window:1", "owning window activated")
+	local selected = fake.performed[1]
+	expect_equal(selected.client_id, "client:two", "explicit app")
+	expect_equal(selected.session_id, "session:a", "perform targets owning session")
+	expect_equal(selected.action, "session.select", "select action")
+	expect_equal(selected.args.session_id, "session:a", "selected session")
+	expect_equal(selected.args.window_id, "window:1", "selected window")
+	expect(position(fake, "session.set_layer_state") < position(fake, "client.perform"), "restore before select")
+	expect_equal(#fake.layers, 1, "no second picker")
+	local other = fake.actions.project_picker.run(
+		{ session_id = "session:b", client_id = "client:two" },
+		{ client_id = "client:one" }
+	)
+	expect(other.layer_id ~= first.layer_id, "other app has an independent picker")
+	for index, client in ipairs({ "client:two", "client:one" }) do
+		local command = fake.layers[index].layout.block.options.command
+		expect_equal(command[5], client, "wrapper retains its target app")
+		expect_equal(launch_invocation(fake, command).client_id, client, "acceptance snapshot retains target")
+		expect_equal(fake.layers[index].layout.block.label, "rex.picker.projects:" .. client, "app-specific tag")
+	end
+	package.loaded["project-picker"] = nil
+	fake.session_list = { { session_id = "session:a" }, { session_id = "session:b" } }
+	local rediscovered = open(fake, "project_picker", { session_id = "session:a", client_id = "client:one" })
+	expect_equal(rediscovered.layer_id, other.layer_id, "reload ignores another app's matching source")
+	expect_equal(#fake.layers, 2, "one picker per app after reload")
+end)
+
+test("both source slots survive repeated setup and stay independent", function()
+	local fake = install({ views = { ["session:a"] = view_with({}) } })
+	local ctx = { session_id = "session:a", client_id = "client:app" }
+	local project = open(fake, "project_picker", ctx)
+	local session = open(fake, "session_picker", ctx)
+	local project_again = open(fake, "project_picker", ctx)
+	local session_again = open(fake, "session_picker", ctx)
+	expect_equal(#fake.layers, 2, "one layer per source after setup repeats")
+	expect_equal(project_again.layer_id, project.layer_id, "projects retained")
+	expect_equal(session_again.layer_id, session.layer_id, "sessions retained")
+	expect(project.layer_id ~= session.layer_id, "independent source instances")
+end)
+
+test("reload discovers each reserved picker across sessions before creating an empty host window", function()
+	for _, action in ipairs({ "project_picker", "session_picker" }) do
+		local fake = install({
+			views = { ["session:a"] = picker_view(), ["session:empty"] = { windows = {} } },
+			sessions = { { session_id = "session:empty" }, { session_id = "session:a" } },
+		})
+		local first = open(fake, action, { session_id = "session:a", client_id = "client:app" })
+		local files = #owned_files
+		package.loaded["project-picker"] = nil
+		local result = open(fake, action, { session_id = "session:empty", client_id = "client:app" })
+		expect_equal(result.layer_id, first.layer_id, "rediscovered layer")
+		expect_equal(result.block_ids[1], first.block_ids[1], "rediscovered block")
+		expect_equal(#fake.layers, 1, "no duplicate after reload")
+		expect_equal(#fake.windows, 0, "no unused empty host")
+		expect_equal(#owned_files, files, "no new launch files")
+		expect_equal(fake.performed[1].args.session_id, "session:a", "original session selected")
+	end
+end)
+
+test("discovery prefers the current view and rejects generic, tiled, wrong-flavor and multiblock layers", function()
+	for _, name in ipairs({ "projects", "sessions" }) do
+		local tag = "rex.picker." .. name .. ":client:app"
+		local function tagged(id, label, kind, flavor, multiple)
+			local blocks = { terminal("block:" .. id, { label = label, flavor = flavor or TERM }) }
+			if multiple then
+				blocks[2] = terminal("block:extra")
+			end
+			return { layer_id = "layer:" .. id, kind = kind or "floating", blocks = blocks }
+		end
+		local decoys = {
+			tagged("generic", name == "projects" and "Projects" or "Sessions"),
+			tagged("tiled", tag, "tiled"),
+			tagged("browser", tag, "floating", "com.superlogical.browser"),
+			tagged("multiple", tag, "floating", TERM, true),
+			tagged("different-app", "rex.picker." .. name .. ":client:other"),
+		}
+		local fake = install({
+			views = { ["session:a"] = view_with(decoys), ["session:b"] = view_with({ tagged("other", tag) }) },
+			sessions = { { session_id = "session:b" }, { session_id = "session:a" } },
+		})
+		local result = open(fake, name == "projects" and "project_picker" or "session_picker", {
+			session_id = "session:a",
+			client_id = "client:app",
+		})
+		expect_equal(result.layer_id, "layer:other", "only exact reserved singleton terminal reused")
+		expect_equal(#fake.layers, 0, "no creation")
+		expect_equal(#decoys, 5, "unrelated layers untouched")
+		decoys[#decoys + 1] = tagged("current", tag)
+		package.loaded["project-picker"] = nil
+		local baseline = count(fake.calls, "session.view")
+		result = open(fake, name == "projects" and "project_picker" or "session_picker", {
+			session_id = "session:a",
+			client_id = "client:app",
+		})
+		expect_equal(result.layer_id, "layer:current", "current view preferred")
+		expect_equal(count(fake.calls, "session.view"), baseline + 1, "no other view needed")
+	end
+end)
+
+test("discovery skips vanished sessions but propagates unexpected failures and unlocks retry", function()
+	local env = {
+		views = { ["session:a"] = view_with({}) },
+		sessions = { { session_id = "session:gone" } },
+	}
+	local fake = install(env)
+	local ctx = { session_id = "session:a", client_id = "client:app" }
+	local first = open(fake, "project_picker", ctx)
+	expect_equal(#fake.layers, 1, "missing other session skipped")
+	close_picker(fake, first)
+	package.loaded["project-picker"] = nil
+	env.on_call = function(method, args)
+		if method == "session.view" and args.session_id == "session:gone" then
+			error("discovery denied")
+		end
+	end
+	local ok, err = pcall(open, fake, "project_picker", ctx)
+	expect(not ok and tostring(err):find("discovery denied", 1, true), "unexpected error propagated")
+	expect_equal(#fake.layers, 1, "no creation on failed scan")
+	env.on_call = nil
+	fake.actions.project_picker.run(ctx, {})
+	expect_equal(#fake.layers, 2, "retry unblocked and discovers again")
+end)
+
+test("exact stale layer or session errors permit one replacement without another global scan", function()
+	for _, missing in ipairs({ "layer", "session" }) do
+		local fake = install({ views = { ["session:a"] = view_with({}), ["session:b"] = view_with({}) } })
+		local first = open(fake, "project_picker", { session_id = "session:a", client_id = "client:app" })
+		if missing == "layer" then
+			close_picker(fake, first)
+		else
+			fake.views["session:a"] = nil
+		end
+		local ctx = { session_id = "session:b", client_id = "client:app" }
+		local second = fake.actions.project_picker.run(ctx, {})
+		local third = fake.actions.project_picker.run(ctx, {})
+		expect(second.layer_id ~= first.layer_id, "fresh layer after exact stale error")
+		expect_equal(third.layer_id, second.layer_id, "replacement reused")
+		expect_equal(#fake.layers, 2, "one replacement")
+		expect_equal(count(fake.calls, "session.view"), 2, "only placement reads current view on reopen")
+	end
+end)
+
+test("plain restore errors replace only a confirmed missing layer or owner session", function()
+	for _, action in ipairs({ "project_picker", "session_picker" }) do
+		for _, missing in ipairs({ "layer", "session" }) do
+			local env = {
+				views = { ["session:a"] = picker_view(), ["session:b"] = picker_view() },
+				sessions = { { session_id = "session:a" }, { session_id = "session:b" } },
+				rpc_errors = {},
+			}
+			local fake = install(env)
+			local first = open(fake, action, { session_id = "session:a", client_id = "client:app" })
+			if missing == "layer" then
+				close_picker(fake, first)
+				env.rpc_errors["session.set_layer_state"] = "layer " .. first.layer_id .. " not found"
+			else
+				fake.views["session:a"] = nil
+				fake.session_list = { { session_id = "session:b" } }
+				env.rpc_errors["session.set_layer_state"] = "session session:a not found"
+				env.on_call = function(method, args)
+					if method == "session.view" then
+						env.rpc_errors[method] = args.session_id == "session:a" and "session session:a not found" or nil
+					end
+				end
+			end
+			local ctx = { session_id = "session:b", client_id = "client:app" }
+			local second = fake.actions[action].run(ctx, {})
+			expect(second.layer_id ~= first.layer_id, "confirmed stale picker replaced")
+			expect_equal(#fake.layers, 2, "exactly one replacement")
+			expect_equal(fake.layers[2].session_id, ctx.session_id, "replacement belongs to invoking session")
+			env.rpc_errors["session.set_layer_state"] = nil
+			local third = fake.actions[action].run(ctx, {})
+			expect_equal(third.layer_id, second.layer_id, "replacement reused after plain error")
+			expect_equal(#fake.layers, 2, "no duplicate on retry")
+		end
+	end
+end)
+
+test("failed restore verification keeps a listed owner and releases the busy slot", function()
+	for _, view_error in ipairs({ "session view denied", "request failed (code=session_not_found)" }) do
+		local env = {
+			views = { ["session:a"] = picker_view() },
+			sessions = { { session_id = "session:a" } },
+			rpc_errors = {},
+		}
+		local fake = install(env)
+		local ctx = { session_id = "session:a", client_id = "client:app" }
+		local first = open(fake, "project_picker", ctx)
+		env.rpc_errors["session.set_layer_state"] = "restore denied"
+		env.rpc_errors["session.view"] = view_error
+		local ok, err = pcall(fake.actions.project_picker.run, ctx, {})
+		expect(not ok and tostring(err):find("restore denied", 1, true), "original restore failure propagated")
+		expect_equal(#fake.layers, 1, "listed owner prevents a duplicate")
+		env.rpc_errors = {}
+		local retry = fake.actions.project_picker.run(ctx, {})
+		expect_equal(retry.layer_id, first.layer_id, "retry reuses retained instance")
+	end
+end)
+
+test("failed owner lookup never creates a replacement and releases the busy slot", function()
+	for _, owner_exists in ipairs({ false, true }) do
+		local env = {
+			views = { ["session:a"] = picker_view(), ["session:b"] = picker_view() },
+			sessions = { { session_id = "session:a" }, { session_id = "session:b" } },
+			rpc_errors = {},
+		}
+		local fake = install(env)
+		local first = open(fake, "project_picker", { session_id = "session:a", client_id = "client:app" })
+		if not owner_exists then
+			fake.views["session:a"] = nil
+			fake.session_list = { { session_id = "session:b" } }
+		end
+		env.rpc_errors["session.set_layer_state"] = "restore failed"
+		env.rpc_errors["session.view"] = "view failed"
+		env.rpc_errors["session.list"] = "owner lookup failed"
+		local ctx = { session_id = "session:b", client_id = "client:app" }
+		local ok, err = pcall(fake.actions.project_picker.run, ctx, {})
+		expect(not ok and tostring(err):find("owner lookup failed", 1, true), "lookup failure propagated")
+		expect_equal(#fake.layers, 1, "unknown owner state prevents creation")
+		env.rpc_errors = {}
+		local retry = fake.actions.project_picker.run(ctx, {})
+		if owner_exists then
+			expect_equal(retry.layer_id, first.layer_id, "live instance retained")
+			expect_equal(#fake.layers, 1, "retry creates nothing")
+		else
+			expect(retry.layer_id ~= first.layer_id, "retry replaces confirmed missing owner")
+			expect_equal(#fake.layers, 2, "retry creates one replacement")
+		end
+	end
+end)
+
+test("restore and client selection errors keep the instance and release the busy slot", function()
+	for _, method in ipairs({ "session.attach_all", "session.set_layer_state", "client.perform", "client.list" }) do
+		local errors = {
+			"request failed (code=permission_denied)",
+			"not_found in an unrelated message",
+			"permission denied",
+			"request timed out",
+			"method not supported",
+			"layer layer:1 not found",
+		}
+		if method ~= "session.set_layer_state" then
+			errors[#errors + 1] = "request failed (code=not_found)"
+			errors[#errors + 1] = "request failed (code=session_not_found)"
+		end
+		for _, message in ipairs(errors) do
+			local env = {
+				views = { ["session:a"] = view_with({}) },
+				sessions = { { session_id = "session:a" } },
+				rpc_errors = {},
+			}
+			local fake = install(env)
+			local ctx = { session_id = "session:a", client_id = "client:app" }
+			local first = open(fake, "project_picker", ctx)
+			env.rpc_errors[method] = message
+			local ok, err = pcall(fake.actions.project_picker.run, ctx, {})
+			expect(not ok and tostring(err):find(message, 1, true), "original RPC failure propagates")
+			expect_equal(#fake.layers, 1, "no duplicate on failure")
+			env.rpc_errors[method] = nil
+			local retry = fake.actions.project_picker.run(ctx, {})
+			expect_equal(retry.layer_id, first.layer_id, "retry reuses retained instance")
+		end
+	end
+end)
+
+test("ambiguous creation preserves launch files for rediscovery and acceptance", function()
+	for _, response in ipairs({ "throw", "invalid" }) do
+		local env = {
+			views = { ["session:a"] = view_with({}), ["session:b"] = view_with({}) },
+			sessions = { { session_id = "session:a" }, { session_id = "session:b", label = "target" } },
+		}
+		local fake = install(env)
+		local ctx = { session_id = "session:a", client_id = "client:app" }
+		if response == "throw" then
+			env.on_layer = function()
+				error("response lost after creation")
+			end
+		else
+			env.layer_response = {}
+		end
+		local ok, err = pcall(open, fake, "session_picker", ctx)
+		expect(
+			not ok and tostring(err):find(response == "throw" and "response lost" or "Invalid picker layer", 1, true),
+			"original ambiguous response propagates"
+		)
+		local command = fake.layers[1].layout.block.options.command
+		local rows = read_file(command[3])
+		expect_equal(read_file(command[4]), "", "choice file preserved")
+		env.on_layer, env.layer_response = nil, nil
+		local retry = fake.actions.session_picker.run(ctx, {})
+		expect_equal(retry.layer_id, "layer:1", "retry reuses created layer")
+		expect_equal(#fake.layers, 1, "no duplicate after lost response")
+		expect_equal(read_file(command[3]), rows, "rows remain available after reuse")
+		local selected = choose_label("target")(nil, rows).stdout
+		write_file(command[4], selected)
+		expect_equal(read_file(command[4]), selected, "choice remains writable and readable")
+		require("project-picker").run(launch_invocation(fake, command))
+		expect_equal(fake.queued[1].args.session_id, "session:b", "preserved choice accepted")
+		expect_equal(#fake.fzf_runs, 0, "acceptance does not restart fzf")
+	end
+end)
+
+test("unknown creation ownership retains files until retry proves layer presence or absence", function()
+	for _, layer_exists in ipairs({ false, true }) do
+		for _, lookup_fails in ipairs({ false, true }) do
+			local env = {
+				views = { ["session:a"] = view_with({}) },
+				sessions = { { session_id = "session:a" } },
+				rpc_errors = {},
+			}
+			local fake = install(env)
+			local ctx = { session_id = "session:a", client_id = "client:app" }
+			env.on_layer = function()
+				if not layer_exists then
+					close_picker(fake, { layer_id = "layer:1" })
+				end
+				env.rpc_errors["session.view"] = "recovery view denied"
+				if lookup_fails then
+					env.rpc_errors["session.list"] = "recovery lookup denied"
+				end
+				error("creation outcome unknown")
+			end
+			local ok, err = pcall(open, fake, "project_picker", ctx)
+			expect(not ok and tostring(err):find("creation outcome unknown", 1, true), "creation error preserved")
+			local command = fake.layers[1].layout.block.options.command
+			local rows = read_file(command[3])
+			expect_equal(read_file(command[4]), "", "unresolved choice file retained")
+			env.on_layer = nil
+			ok = pcall(fake.actions.project_picker.run, ctx, {})
+			expect(not ok, "retry requires successful ownership lookup")
+			expect_equal(#fake.layers, 1, "unknown outcome never creates a duplicate")
+			expect_equal(read_file(command[3]), rows, "unresolved rows survive another failed lookup")
+			expect_equal(read_file(command[4]), "", "unresolved choice survives another failed lookup")
+			env.rpc_errors = {}
+			local retry = fake.actions.project_picker.run(ctx, {})
+			if layer_exists then
+				expect_equal(retry.layer_id, "layer:1", "recovered layer reused")
+				expect_equal(#fake.layers, 1, "live layer prevents another creation")
+				expect_equal(read_file(command[3]), rows, "confirmed live layer owns rows")
+				write_file(command[4], "choice still writable")
+				expect_equal(read_file(command[4]), "choice still writable", "confirmed live layer owns choice")
+			else
+				expect(retry.layer_id ~= "layer:1", "confirmed absent layer replaced")
+				expect_equal(#fake.layers, 2, "one replacement after proof")
+				for _, path in ipairs({ command[3], command[4] }) do
+					local file = io.open(path, "rb")
+					if file then
+						file:close()
+					end
+					expect(not file, "confirmed absent layer's abandoned file removed")
+				end
+			end
+		end
+	end
+end)
+
+test("failed creation retries rediscover and release the busy slot", function()
+	for _, thrown in ipairs({ false, true }) do
+		local env = { views = { ["session:a"] = view_with({}) } }
+		env[thrown and "layer_throw" or "layer_error"] = "creation denied"
+		local fake = install(env)
+		local ctx = { session_id = "session:a", client_id = "client:app" }
+		local ok = pcall(open, fake, "project_picker", ctx)
+		expect(not ok, "creation error propagated")
+		env.layer_throw, env.layer_error = nil, nil
+		local retry = fake.actions.project_picker.run(ctx, {})
+		expect(retry.layer_id ~= nil, "retry succeeds")
+		expect_equal(count(fake.calls, "session.attach_all"), 3, "failed creation verifies absence then rescans")
+		expect_equal(#fake.views["session:a"].windows[1].layers, 1, "only successful layer exists")
+	end
+end)
+
+test("reentrant discovery, creation, and focus coalesce same-source opens but allow the other source", function()
+	for _, boundary in ipairs({
+		"session.attach_all",
+		"session.view",
+		"creation",
+		"session.set_layer_state",
+		"client.perform",
+	}) do
+		local env = { views = { ["session:a"] = view_with({}) } }
+		local fake = install(env)
+		require("project-picker").setup({ roots = { tmp } })
+		local ctx = { session_id = "session:a", client_id = "client:app" }
+		local fired = false
+		local function overlap()
+			if fired then
+				return
+			end
+			fired = true
+			expect_equal(fake.actions.project_picker.run(ctx, {}), nil, "same source coalesces")
+			local other = fake.actions.session_picker.run(ctx, {})
+			expect(other and other.layer_id, "different source opens independently")
+		end
+		if boundary == "creation" then
+			env.on_layer = overlap
+		elseif boundary == "session.set_layer_state" or boundary == "client.perform" then
+			fake.actions.project_picker.run(ctx, {})
+		end
+		env.on_call = function(method)
+			if method == boundary then
+				overlap()
+			end
+		end
+		local result = fake.actions.project_picker.run(ctx, {})
+		expect(fired, "boundary exercised")
+		expect(result and result.layer_id, "first opener returns IDs")
+		expect_equal(#fake.layers, 2, "only one layer per source")
+	end
+end)
+
+test("yielded discovery, creation, and focus keep the source busy until completion", function()
+	for _, boundary in ipairs({ "session.view", "creation", "client.perform" }) do
+		local env = { views = { ["session:a"] = view_with({}) } }
+		local fake = install(env)
+		require("project-picker").setup({ roots = { tmp } })
+		local ctx = { session_id = "session:a", client_id = "client:app" }
+		if boundary == "client.perform" then
+			fake.actions.project_picker.run(ctx, {})
+		end
+		local function pause()
+			coroutine.yield("paused")
+		end
+		if boundary == "creation" then
+			env.on_layer = pause
+		else
+			env.on_call = function(method)
+				if method == boundary then
+					pause()
+				end
+			end
+		end
+		local thread = coroutine.create(function()
+			return fake.actions.project_picker.run(ctx, {})
+		end)
+		local ok, value = coroutine.resume(thread)
+		expect(ok and value == "paused", tostring(value))
+		expect_equal(fake.actions.project_picker.run(ctx, {}), nil, "overlap coalesced while suspended")
+		env.on_call, env.on_layer = nil, nil
+		fake.actions.session_picker.run(ctx, {})
+		ok, value = coroutine.resume(thread)
+		expect(ok and value and value.layer_id, tostring(value))
+		expect_equal(coroutine.status(thread), "dead", "open completed")
+		expect_equal(#fake.layers, 2, "one layer per source")
+		local reused = fake.actions.project_picker.run(ctx, {})
+		expect_equal(reused.layer_id, value.layer_id, "slot released after yield")
+	end
+end)
+
+test("overlapping client resolution converges on one picker for the resolved app", function()
+	local env = { views = { ["session:a"] = view_with({}) } }
+	local fake = install(env)
+	require("project-picker").setup({ roots = { tmp } })
+	local ctx = { session_id = "session:a", client_id = "client:app" }
+	local threads = {}
+	env.on_call = function(method)
+		if method == "client.list" then
+			coroutine.yield("resolving")
+		end
+	end
+	for index = 1, 2 do
+		threads[index] = coroutine.create(function()
+			return fake.actions.project_picker.run(ctx, {})
+		end)
+		local ok, value = coroutine.resume(threads[index])
+		expect(ok and value == "resolving", tostring(value))
+	end
+	env.on_call = nil
+	env.on_layer = function()
+		coroutine.yield("creating")
+	end
+	local ok, first = coroutine.resume(threads[1])
+	expect(ok and first == "creating", tostring(first))
+	local second
+	ok, second = coroutine.resume(threads[2])
+	expect(ok and second == nil, "second resolved call coalesces before creation")
+	env.on_layer = nil
+	ok, first = coroutine.resume(threads[1])
+	expect(ok and first and first.layer_id, tostring(first))
+	second = fake.actions.project_picker.run(ctx, {})
+	expect_equal(second.layer_id, first.layer_id, "completed instance reused")
+	expect_equal(#fake.layers, 1, "one creation after overlapping lookup")
+end)
+
+test("a busy source in one app does not block the same source in another app", function()
+	local env = {
+		views = { ["session:a"] = view_with({}) },
+		app_clients = { { client_id = "client:one" }, { client_id = "client:two" } },
+	}
+	local fake = install(env)
+	require("project-picker").setup({ roots = { tmp } })
+	env.on_layer = function()
+		coroutine.yield("created")
+	end
+	local first = coroutine.create(function()
+		return fake.actions.project_picker.run({ session_id = "session:a", client_id = "client:one" }, {})
+	end)
+	local ok, value = coroutine.resume(first)
+	expect(ok and value == "created", tostring(value))
+	env.on_layer = nil
+	local other = fake.actions.project_picker.run({ session_id = "session:a", client_id = "client:two" }, {})
+	expect(other and other.layer_id, "other app opens without waiting")
+	ok, value = coroutine.resume(first)
+	expect(ok and value and value.layer_id, tostring(value))
+	expect(value.layer_id ~= other.layer_id, "separate app instances")
+	expect_equal(#fake.layers, 2, "one picker for each app")
+end)
+
 test("Ctrl+t f opens the project picker and Ctrl+t d opens the session picker", function()
 	local fake = install({ views = { ["session:a"] = view_with({}) } })
 	assert(loadfile(rex_dir .. "/init.lua"))()
@@ -393,7 +1021,7 @@ test("Ctrl+t f opens the project picker and Ctrl+t d opens the session picker", 
 		expect_equal(fake.actions[name].args.client_id, "string?", name .. " takes an optional client_id")
 	end
 	fake.actions.project_picker.run({ session_id = "session:a", client_id = "client:app" }, {})
-	local invocation = fake.encoded[fake.layers[1].layout.block.options.command[7]]
+	local invocation = launch_invocation(fake, fake.layers[1].layout.block.options.command)
 	local home = os.getenv("HOME")
 	expect_equal(
 		table.concat(invocation.roots, ","),
@@ -403,7 +1031,7 @@ test("Ctrl+t f opens the project picker and Ctrl+t d opens the session picker", 
 end)
 
 test("both pickers open the same centered card in the invoking block's window", function()
-	local layers = {}
+	local layers, invocations = {}, {}
 	for _, action in ipairs({ "project_picker", "session_picker" }) do
 		local fake = install({
 			views = {
@@ -426,6 +1054,7 @@ test("both pickers open the same centered card in the invoking block's window", 
 			open(fake, action, { session_id = "session:a", block_id = "block:mine", client_id = "client:app" })
 		expect_equal(result.block_ids[1], "block:picker", "action returns the picker block")
 		layers[action] = fake.layers[1]
+		invocations[action] = launch_invocation(fake, fake.layers[1].layout.block.options.command)
 		expect_equal(#fake.windows, 0, "no window is created in a session that has one")
 	end
 	local project, session = layers.project_picker, layers.session_picker
@@ -439,20 +1068,27 @@ test("both pickers open the same centered card in the invoking block's window", 
 	expect_equal(table.concat(project.bounds, ","), table.concat(session.bounds, ","), "same card")
 	expect(project.layout.block.label ~= session.layout.block.label, "distinct titles")
 	local command = project.layout.block.options.command
-	expect_equal(table.concat(command, " ", 1, 5), "rex -C client:app do " .. rex_dir .. "/picker-runner.lua", "argv")
+	expect_equal(command[1], "/bin/sh", "nonlogin wrapper")
+	expect_equal(command[2], rex_dir .. "/picker-launch.sh", "launch script")
+	expect_equal(command[5], "client:app", "destination app")
+	expect_equal(command[6], rex_dir .. "/picker-runner.lua", "accepted choice runner")
+	expect_equal(command[8], FZF, "resolved fzf runs before the choice runner")
+	expect_equal(invocations.project_picker.choice_file, command[4], "choice output")
 end)
 
 test("an explicit client_id targets that app when two apps are connected", function()
 	local fake = install({
 		app_clients = { { client_id = "client:one" }, { client_id = "client:two" } },
-		views = { ["session:a"] = view_with({}) },
+		views = { ["session:a"] = picker_view() },
+		size = { desired = { size_report(400, 120, 1, "client:one"), size_report(200, 60, 1, "client:two") } },
 	})
 	open(fake, "session_picker", { session_id = "session:a", client_id = "client:cli" }, { client_id = "client:two" })
 	local command = fake.layers[1].layout.block.options.command
-	expect_equal(command[3], "client:two", "runner acts on the named app")
-	local invocation = fake.encoded[command[7]]
+	expect_equal(command[5], "client:two", "runner acts on the named app")
+	local invocation = launch_invocation(fake, command)
 	expect_equal(invocation.client_id, "client:two", "invocation client")
 	expect_equal(invocation.source, "sessions", "invocation source")
+	expect_equal(table.concat(fake.layers[1].bounds, ","), "0.25,0.25,0.5,0.5", "requested app's viewport")
 	expect(fake.client_lists[1].session_id == nil, "apps are not filtered by session attachment")
 end)
 
@@ -462,7 +1098,7 @@ test("a key press targets the app that pressed it when two apps are connected", 
 		views = { ["session:a"] = view_with({}) },
 	})
 	open(fake, "project_picker", { session_id = "session:a", client_id = "client:one" })
-	expect_equal(fake.layers[1].layout.block.options.command[3], "client:one", "invoking app")
+	expect_equal(fake.layers[1].layout.block.options.command[5], "client:one", "invoking app")
 end)
 
 test("the picker refuses to guess between apps or accept an unknown client_id", function()
@@ -483,7 +1119,7 @@ test("the picker refuses to guess between apps or accept an unknown client_id", 
 end)
 
 test("an empty session gets a shell window before the picker opens in it", function()
-	local fake = install({ views = { ["session:empty"] = { windows = {} } } })
+	local fake = install({ views = { ["session:empty"] = { windows = {} } }, index_view = { entries = {} } })
 	open(
 		fake,
 		"project_picker",
@@ -493,7 +1129,11 @@ test("an empty session gets a shell window before the picker opens in it", funct
 	expect_equal(#fake.windows, 1, "shell window created")
 	expect_equal(fake.windows[1].layout.block.flavor, TERM, "normal shell")
 	expect_equal(fake.layers[1].window_id, "window:new1", "picker opens in that window")
+	expect_equal(table.concat(fake.layers[1].bounds, ","), "0.05,0.075,0.9,0.85", "immediate fallback bounds")
 	expect(position(fake, "session.new_window") < position(fake, "session.new_layer"), "window first")
+	invoke(fake, {})
+	expect_equal(#fake.windows, 1, "cancel leaves the shell window usable")
+	expect_equal(#fake.resizes + #fake.queued + #fake.created, 0, "cancel neither resizes nor selects")
 end)
 
 test("a picker without a session fails with a clear error and creates nothing", function()
@@ -510,6 +1150,7 @@ test("the session picker lists stable IDs with readable, unambiguous labels", fu
 			{ session_id = "session:aaaa-11111111", label = "work" },
 			{ session_id = "session:bbbb-22222222", label = "work" },
 			{ session_id = "session:here", label = "" },
+			{ session_id = "session:untitled", label = "" },
 			{ session_id = "session:tab", label = "a\tb" },
 		},
 	})
@@ -518,14 +1159,34 @@ test("the session picker lists stable IDs with readable, unambiguous labels", fu
 	local rows = shown_rows(run.stdin)
 	expect_equal(rows[2], "work  #11111111", "first duplicate")
 	expect_equal(rows[3], "work  #22222222", "second duplicate")
-	expect_equal(rows[4], "Untitled  (current)", "current session")
+	expect_equal(rows[4], "Untitled", "unnamed other session")
 	expect_equal(rows[5], "a\\x09b", "escaped label")
+	expect_equal(#rows, 5, "current session excluded")
 	expect_equal(argument(run.argv, "--border-label"), " Sessions ", "title")
 	expect_equal(argument(run.argv, "--prompt"), "session> ", "prompt")
 	expect(argument(run.argv, "--header"):find("Ctrl-R", 1, true), "keyboard help")
 	expect(not table.concat(run.argv, "\n"):find("load:", 1, true), "the session list is already fresh")
 	expect_equal(#fake.queued + #fake.windows, 0, "cancel selects nothing")
 	expect_equal(count(fake.calls, "session.view"), 0, "browsing does not touch other sessions")
+end)
+
+test("excluding the current session leaves unique labels and an empty state when alone", function()
+	local fake = install({
+		session_id = "session:here",
+		sessions = {
+			{ session_id = "session:here", label = "work" },
+			{ session_id = "session:other", label = "work" },
+		},
+	})
+	invoke(fake, { source = "sessions" })
+	local rows = shown_rows(fake.fzf_runs[1].stdin)
+	expect_equal(rows[2], "work", "hidden session does not disambiguate the visible label")
+	expect_equal(#rows, 2, "only the other session is selectable")
+	fake = install({ session_id = "session:here", sessions = { { session_id = "session:here", label = "work" } } })
+	invoke(fake, { source = "sessions" })
+	rows = shown_rows(fake.fzf_runs[1].stdin)
+	expect_equal(#rows, 1, "no selectable sessions when alone")
+	expect_equal(rows[1], "No other Rex sessions", "empty-state notice")
 end)
 
 test("choosing an empty session gives it a shell before selecting it", function()
@@ -576,132 +1237,165 @@ end)
 
 test("fitted bounds center the card and respect the window caps", function()
 	local fitted_bounds = (install() and require("project-picker")).fitted_bounds
-	local big = fitted_bounds({ 0.2, 0.15, 0.6, 0.7 }, { columns = 200, rows = 60 })
+	local big = fitted_bounds({ columns = 200, rows = 60 })
 	expect(near(big[3], 0.5) and near(big[4], 0.5), "scales to 100x30")
 	expect(near(big[1], 0.25) and near(big[2], 0.25), "centered")
-	local small = fitted_bounds({ 0.2, 0.15, 0.6, 0.7 }, { columns = 50, rows = 15 })
+	local small = fitted_bounds({ columns = 50, rows = 15 })
 	expect(near(small[3], 0.9) and near(small[4], 0.85), "capped")
 	expect(near(small[1], 0.05) and near(small[2], 0.075), "capped and centered")
-	expect_equal(fitted_bounds({ 0.249, 0.251, 0.501, 0.499 }, { columns = 200, rows = 60 }), nil, "deadband")
-	expect_equal(fitted_bounds({ 0.05, 0.075, 0.9, 0.85 }, { columns = 60, rows = 20 }), nil, "already capped")
-	local moved = fitted_bounds({ 0, 0, 0.5, 0.5 }, { columns = 200, rows = 60 })
-	expect(near(moved[1], 0.25) and near(moved[2], 0.25), "correct size is still recentered")
+	expect_equal(table.concat(fitted_bounds(), ","), "0.05,0.075,0.9,0.85", "missing viewport uses centered caps")
 end)
 
-test("a delayed size report from the target app resizes the card once", function()
-	local fake
-	fake = install({
-		session_id = "session:a",
-		block_id = "block:picker",
-		views = { ["session:a"] = picker_view({ 0.2, 0.15, 0.6, 0.7 }) },
-		sizes = { ["block:host"] = { desired = {} }, ["block:picker"] = { desired = { size_report(999, 999, 1) } } },
-		ticks = 6,
-		on_wait = function(state, tick)
-			if tick == 3 then
-				state.sizes["block:host"] = {
-					columns = 80,
-					rows = 24,
-					owner = "client:other",
-					desired = { size_report(300, 90, 1, "client:other"), size_report(200, 60, 1) },
-				}
-			end
-		end,
-		index_view = { entries = {} },
-	})
-	invoke(fake, { client_id = "client:app" })
-	expect_equal(#fake.resizes, 1, "one resize for one report")
-	local bounds = fake.resizes[1]
-	expect(near(bounds[3], 0.5) and near(bounds[4], 0.5), "sized from the target app's tiled-host report")
-	expect(near(bounds[1], 0.25) and near(bounds[2], 0.25), "centered")
-end)
-
-test("stable host size does not repeatedly resize either picker", function()
+test("both pickers are created at final bounds before their runner starts", function()
 	for _, source in ipairs({ "projects", "sessions" }) do
 		local fake = install({
-			session_id = "session:a",
-			block_id = "block:picker",
-			views = { ["session:a"] = picker_view({ 0.2, 0.15, 0.6, 0.7 }) },
-			size = { desired = { size_report(200, 60, 1) } },
-			ticks = 40,
+			views = { ["session:a"] = picker_view() },
+			size = {
+				columns = 80,
+				rows = 24,
+				owner = "client:other",
+				desired = { size_report(300, 90, 1, "client:other"), size_report(200, 60, 1) },
+			},
 			index_view = { entries = {} },
 		})
+		open(fake, source == "projects" and "project_picker" or "session_picker", {
+			session_id = "session:a",
+			block_id = "block:host",
+			client_id = "client:app",
+		})
+		expect_equal(table.concat(fake.layers[1].bounds, ","), "0.25,0.25,0.5,0.5", "final initial placement")
+		expect(position(fake, "block.method") < position(fake, "session.new_layer"), "measurement before creation")
+		local probes = count(fake.calls, "block.method")
 		invoke(fake, { source = source })
-		expect_equal(#fake.resizes, 1, "unchanged host report converges after one resize")
-		expect_equal(fake.fzf_runs[1].waits, 41, "picker kept waiting")
+		expect_equal(#fake.resizes, 0, "no post-open resize")
+		expect_equal(count(fake.calls, "block.method"), probes, "runner does not probe geometry")
+		expect_equal(fake.login_calls, 1, "no login shell in the runner")
 	end
 end)
 
-test("more than four successive viewport changes keep fitting the card", function()
-	local fake = install({
-		session_id = "session:a",
-		block_id = "block:picker",
-		views = { ["session:a"] = picker_view({ 0.2, 0.15, 0.6, 0.7 }) },
+test("a changed viewport affects the next open, never the running picker", function()
+	local fake
+	fake = install({
+		views = { ["session:a"] = picker_view() },
 		size = { desired = { size_report(200, 60, 1) } },
-		ticks = 12,
-		on_wait = function(state, tick)
-			if tick <= 12 then
-				state.size = { desired = { size_report(200 + tick * 20, 60 + tick * 6, tick) } }
-			end
-		end,
 		index_view = { entries = {} },
+		fzf = function()
+			fake.size = { desired = { size_report(400, 120, 2) } }
+			return { code = 130, stdout = "", stderr = "" }
+		end,
 	})
+	require("project-picker").setup({ roots = { tmp } })
+	local ctx = { session_id = "session:a", block_id = "block:host", client_id = "client:app" }
+	local first = fake.actions.project_picker.run(ctx, {})
 	invoke(fake, {})
-	expect_equal(#fake.resizes, 13, "every viewport change gets fitted")
-	for index, bounds in ipairs(fake.resizes) do
-		expect(math.abs(bounds[3] * (200 + (index - 1) * 20) - 100) < 0.05, "card stays 100 columns")
-		expect(math.abs(bounds[4] * (60 + (index - 1) * 6) - 30) < 0.02, "card stays 30 rows")
-	end
+	expect_equal(table.concat(fake.layers[1].bounds, ","), "0.25,0.25,0.5,0.5", "first bounds stay unchanged")
+	close_picker(fake, first)
+	fake.actions.project_picker.run(ctx, {})
+	expect_equal(table.concat(fake.layers[2].bounds, ","), "0.375,0.375,0.25,0.25", "next open recomputes bounds")
+	expect_equal(#fake.resizes, 0, "no resize")
+	expect_equal(fake.login_calls, 1, "PATH captured once for both opens")
 end)
 
-test("unchanged host reports recover a forcibly enlarged and shrunken own layer", function()
-	local view = picker_view({ 0.25, 0.25, 0.5, 0.5 })
+test("both pickers reuse the login PATH and absolute fzf captured once at setup", function()
 	local fake = install({
-		session_id = "session:a",
-		block_id = "block:picker",
-		views = { ["session:a"] = view },
-		size = { desired = { size_report(200, 60, 1) } },
-		ticks = 8,
-		on_wait = function(_, tick)
-			if tick == 2 then
-				view.windows[1].layers[2].bounds = { 0.05, 0.05, 0.9, 0.9 }
-			elseif tick == 5 then
-				view.windows[1].layers[2].bounds = { 0.4, 0.4, 0.2, 0.2 }
-			end
-		end,
+		views = { ["session:a"] = view_with({}) },
 		index_view = { entries = {} },
 	})
-	invoke(fake, {})
-	expect_equal(#fake.resizes, 2, "both forced bounds recover")
-	for _, bounds in ipairs(fake.resizes) do
-		expect_equal(table.concat(bounds, ","), "0.25,0.25,0.5,0.5", "original centered card restored")
+	local picker = require("project-picker")
+	expect_equal(#fake.exec_runs, 0, "requiring the module does not start a shell")
+	picker.setup({ roots = { tmp } })
+	expect_equal(fake.login_calls, 1, "one capture for both registered actions")
+	for _, name in ipairs({ "project_picker", "session_picker", "project_picker" }) do
+		local result = fake.actions[name].run({ session_id = "session:a", client_id = "client:app" }, {})
+		local options = fake.layers[#fake.layers].layout.block.options
+		expect_equal(options.shell, "none", "no startup shell")
+		expect_equal(options.login, false, "no macOS login wrapper")
+		expect_equal(options.command[1], "/bin/sh", "explicit nonlogin wrapper")
+		expect_equal(options.command[8], FZF, "direct resolved executable")
+		expect_equal(launch_invocation(fake, options.command).fzf, FZF, "retry snapshot retains the executable")
+		expect_equal(table.concat(options.path_prepend, ":"), "/opt/tools:/usr/bin:/bin", "noise-free login PATH")
+		expect_equal(options.env, nil, "terminal options do not support env")
+		close_picker(fake, result)
 	end
+	invoke(fake, {})
+	expect_equal(fake.login_calls, 1, "no shell capture on keypress or run")
 end)
 
-test("viewport shrink caps the card and later growth restores its fixed grid", function()
-	local fake = install({
-		session_id = "session:a",
-		block_id = "block:picker",
-		views = { ["session:a"] = picker_view({ 0.25, 0.25, 0.5, 0.5 }) },
-		size = { desired = { size_report(200, 60, 1) } },
-		ticks = 6,
-		on_wait = function(state, tick)
-			if tick == 1 then
-				state.size = { desired = { size_report(80, 20, 2) } }
-			elseif tick == 4 then
-				state.size = { desired = { size_report(400, 120, 3) } }
-			end
-		end,
-		index_view = { entries = {} },
-	})
-	invoke(fake, {})
-	expect_equal(#fake.resizes, 2, "one resize per changed viewport")
-	expect_equal(table.concat(fake.resizes[1], ","), "0.05,0.075,0.9,0.85", "small window uses centered caps")
-	expect_equal(table.concat(fake.resizes[2], ","), "0.375,0.375,0.25,0.25", "large window restores 100x30")
+test("failed or malformed login environment capture aborts setup", function()
+	for _, result in ipairs({
+		{ code = 1, stdout = "", stderr = "denied" },
+		{ code = 0, stdout = "noise", stderr = "" },
+		{ code = 0, stdout = "\0rex-picker-environment\0\0/opt/tools/fzf\0", stderr = "" },
+		{ code = 0, stdout = "\0rex-picker-environment\0/bin\0\0", stderr = "" },
+		{ code = 0, stdout = "\0rex-picker-environment\0/bin\0fzf\0", stderr = "" },
+		{ code = 0, stdout = "\0rex-picker-environment\0/bin\0/opt/tools/fzf", stderr = "" },
+	}) do
+		local fake = install({ login_result = result })
+		local ok, err = pcall(require("project-picker").setup, { roots = { tmp } })
+		expect(not ok and tostring(err):find("login-shell", 1, true), "failed capture reports its boundary")
+		expect_equal(#fake.actions, 0, "no actions registered")
+	end
+	local fake = install({ login_error = "spawn error" })
+	local ok, err = pcall(require("project-picker").setup, { roots = { tmp } })
+	expect(not ok and tostring(err):find("spawn error", 1, true), "exec nil/error contract")
+	expect_equal(#fake.actions, 0, "no actions registered")
+end)
+
+test("the zsh login capture bypasses mise shims but preserves an earlier normal fzf", function()
+	local directory = tmp .. "/login it's {a}"
+	local normal, shims, bin = directory .. "/normal", directory .. "/shims", directory .. "/bin"
+	local resolved, log = directory .. "/resolved fzf", directory .. "/mise-calls"
+	sh('mkdir -p "$1" "$2" "$3"', normal, shims, bin)
+	write_file(normal .. "/fzf", "#!/bin/sh\nexit 0\n")
+	write_file(resolved, "#!/bin/sh\nexit 0\n")
+	write_file(
+		bin .. "/mise",
+		"#!/bin/sh\nprintf '%s\\n' \"$*\" >> " .. quote(log) .. "\nprintf '%s\\n' " .. quote(resolved) .. "\n"
+	)
+	sh('chmod +x "$1" "$2" "$3"; ln -s "$3" "$4"', normal .. "/fzf", resolved, bin .. "/mise", shims .. "/fzf")
+	for _, use_mise in ipairs({ false, true }) do
+		write_file(log, "")
+		local path = (use_mise and shims or normal .. ":" .. shims) .. ":" .. bin
+		local fake = install({
+			login_prefix = "export PATH=" .. quote(path) .. "; ",
+			fzf_executable = use_mise and resolved or normal .. "/fzf",
+			views = { ["session:a"] = view_with({}) },
+		})
+		require("project-picker").setup({ roots = { tmp } })
+		for _, action in ipairs({ "project_picker", "session_picker" }) do
+			fake.actions[action].run({ session_id = "session:a", client_id = "client:app" }, {})
+			local options = fake.layers[#fake.layers].layout.block.options
+			expect_equal(options.command[8], use_mise and resolved or normal .. "/fzf", "selected executable")
+			expect_equal(table.concat(options.path_prepend, ":"), path, "captured PATH")
+		end
+		expect_equal(#fake.exec_runs, 1, "only setup starts a process")
+		local invocation = launch_invocation(fake, fake.layers[1].layout.block.options.command)
+		invocation.choice_file = nil
+		invoke(fake, invocation)
+		expect_equal(fake.fzf_runs[1].argv[1], use_mise and resolved or normal .. "/fzf", "retry executable")
+		expect_equal(read_file(log), use_mise and "which fzf\n" or "", "mise only resolves the shim once")
+	end
+	for _, mode in ipairs({ "missing", "nonexecutable", "directory", "relative", "mise failure" }) do
+		if mode == "nonexecutable" then
+			sh('chmod -x "$1"', resolved)
+		elseif mode == "directory" then
+			sh('rm -f "$1"; mkdir "$1"', resolved)
+		elseif mode == "relative" then
+			write_file(bin .. "/mise", "#!/bin/sh\nprintf 'relative/fzf\\n'\n")
+		elseif mode == "mise failure" then
+			write_file(bin .. "/mise", "#!/bin/sh\nexit 1\n")
+		end
+		local path = mode == "missing" and bin or shims .. ":" .. bin
+		local fake = install({ login_prefix = "export PATH=" .. quote(path) .. "; " })
+		local ok, err = pcall(require("project-picker").setup, { roots = { tmp } })
+		expect(not ok and tostring(err):find("fzf", 1, true), mode .. " reports failed fzf resolution")
+		expect_equal(#fake.actions, 0, "invalid executable registers no actions")
+	end
 end)
 
 test("split and zoomed hosts measure the owning window rather than the active window", function()
 	for _, zoomed in ipairs({ false, true }) do
-		local view = picker_view({ 0.2, 0.15, 0.6, 0.7 })
+		local view = picker_view()
 		local window = view.windows[1]
 		local tiled = window.layers[1]
 		tiled.blocks = {
@@ -729,93 +1423,84 @@ test("split and zoomed hosts measure the owning window rather than the active wi
 			layers = { { kind = "tiled", blocks = { terminal("block:unrelated") } } },
 		}
 		local fake = install({
-			session_id = "session:a",
-			block_id = "block:picker",
 			views = { ["session:a"] = view },
+			app_clients = { { client_id = "client:app" }, { client_id = "client:other" } },
 			sizes = {
 				["block:decoy"] = { desired = { size_report(900, 900, 1, zoomed and "client:app" or "client:other") } },
 				["block:host"] = { desired = { size_report(zoomed and 200 or 100, zoomed and 60 or 30, 1) } },
 			},
 			index_view = { entries = {} },
 		})
-		invoke(fake, {})
-		expect_equal(table.concat(fake.resizes[1], ","), "0.25,0.25,0.5,0.5", "whole window measured")
+		open(fake, "project_picker", {
+			session_id = "session:a",
+			block_id = "block:host",
+			client_id = "client:app",
+		})
+		expect_equal(fake.layers[1].window_id, "window:1", "invoking window, not active window")
+		expect_equal(table.concat(fake.layers[1].bounds, ","), "0.25,0.25,0.5,0.5", "whole window measured")
+		for _, entry in ipairs(fake.log) do
+			if entry.method == "block.method" then
+				expect_equal(entry.args.session_id, "session:a", "session ID comes from action context")
+			end
+		end
 	end
 end)
 
-test("split layout changes refit without requiring a new host report", function()
-	local view = picker_view({ 0.25, 0.25, 0.5, 0.5 })
-	local fake = install({
-		session_id = "session:a",
-		block_id = "block:picker",
-		views = { ["session:a"] = view },
-		size = { desired = { size_report(200, 60, 1) } },
-		ticks = 2,
-		on_wait = function(_, tick)
-			if tick == 1 then
-				local tiled = view.windows[1].layers[1]
-				tiled.blocks[2] = terminal("block:browser", { flavor = "com.superlogical.browser" })
-				tiled.layout = {
-					rect = { 0, 0, 1, 1 },
-					split = {
-						before = { block_id = "block:host", rect = { 0, 0, 0.5, 1 } },
-						after = { block_id = "block:browser", rect = { 0.5, 0, 0.5, 1 } },
-					},
-				}
-			end
-		end,
-		index_view = { entries = {} },
-	})
-	invoke(fake, {})
-	expect_equal(#fake.resizes, 1, "layout change refits")
-	expect_equal(table.concat(fake.resizes[1], ","), "0.375,0.25,0.25,0.5", "new window estimate")
+test("missing, invalid, foreign and vanished size reports use immediate stable fallback", function()
+	for _, case in ipairs({
+		{ size = { desired = {} } },
+		{ size = { desired = { size_report(0, 60, 1), size_report(200, 0, 2), size_report(1.5, 60, 3) } } },
+		{ size = { desired = { size_report(200, 60, 1, "client:other") } } },
+		{ rpc_errors = { ["block.method"] = "request failed (status=404 code=not_found)" } },
+	}) do
+		case.views = { ["session:a"] = picker_view() }
+		case.index_view = { entries = {} }
+		local fake = install(case)
+		open(fake, "project_picker", { session_id = "session:a", client_id = "client:app" })
+		expect_equal(table.concat(fake.layers[1].bounds, ","), "0.05,0.075,0.9,0.85", "immediate capped fallback")
+		expect_equal(count(fake.calls, "block.method"), 1, "one immediate report read, no retries")
+		fake.size = { desired = { size_report(200, 60, 2) } }
+		invoke(fake, {})
+		expect_equal(#fake.resizes, 0, "late report cannot resize the picker")
+	end
 end)
 
-test("geometry RPC failures propagate and stop the picker child", function()
-	for _, method in ipairs({ "session.view", "block.method", "session.resize_layer" }) do
+test("placement RPC failures propagate before creating a picker", function()
+	for _, method in ipairs({ "session.view", "block.method" }) do
 		local fake = install({
-			session_id = "session:a",
-			block_id = "block:picker",
-			views = { ["session:a"] = picker_view({ 0.2, 0.15, 0.6, 0.7 }) },
+			views = { ["session:a"] = picker_view() },
 			size = { desired = { size_report(200, 60, 1) } },
 			rpc_errors = { [method] = method .. " denied" },
 			index_view = { entries = {} },
 		})
-		local ok, err = pcall(invoke, fake, {})
+		local ok, err = pcall(open, fake, "project_picker", { session_id = "session:a", client_id = "client:app" })
 		expect(not ok and tostring(err):find(method .. " denied", 1, true), "RPC failure must not look successful")
-		expect(fake.fzf_runs[1].killed, "geometry failure kills own fzf")
-		expect_equal(#fake.queued + #fake.created, 0, "failed picker selects nothing")
+		expect_equal(#fake.layers + #fake.fzf_runs, 0, "nothing opened")
 	end
 end)
 
-test("a host without a measurable tiled terminal fails with an actionable error", function()
-	local view = picker_view({ 0.2, 0.15, 0.6, 0.7 })
-	view.windows[1].layers[1].blocks[1].flavor = "com.superlogical.browser"
-	local fake = install({
-		session_id = "session:a",
-		block_id = "block:picker",
-		views = { ["session:a"] = view },
-		index_view = { entries = {} },
-	})
-	local ok, err = pcall(invoke, fake, {})
-	expect(not ok and tostring(err):find("tiled terminal", 1, true), tostring(err))
-	expect(fake.fzf_runs[1].killed, "unmeasurable host stops the child")
+test("nonterminal hosts and absent layout rectangles open without geometry waits", function()
+	for _, browser in ipairs({ true, false }) do
+		local view = picker_view()
+		local host = view.windows[1].layers[1]
+		if browser then
+			host.blocks[1].flavor = "com.superlogical.browser"
+		else
+			host.layout = nil
+		end
+		local fake = install({ views = { ["session:a"] = view }, index_view = { entries = {} } })
+		open(fake, "project_picker", { session_id = "session:a", client_id = "client:app" })
+		expect_equal(table.concat(fake.layers[1].bounds, ","), "0.05,0.075,0.9,0.85", "fallback placement")
+		expect_equal(count(fake.calls, "block.method"), 0, "unmeasurable host is not probed")
+		invoke(fake, {})
+		expect_equal(#fake.resizes, 0, "no resize after cancel")
+	end
 end)
 
-test("fzf start failures, wait failures and crashes are reported and the child is stopped", function()
-	local fake = install({ start_error = "no such file", index_view = { entries = {} } })
+test("blocking fzf execution failures and crashes are reported", function()
+	local fake = install({ exec_error = "no such file", index_view = { entries = {} } })
 	local ok, err = pcall(invoke, fake, {})
-	expect(not ok and tostring(err):find("Cannot start fzf: no such file", 1, true), tostring(err))
-
-	fake = install({
-		index_view = { entries = {} },
-		on_wait = function()
-			return nil, "interrupted"
-		end,
-	})
-	ok, err = pcall(invoke, fake, {})
-	expect(not ok and tostring(err):find("interrupted", 1, true), tostring(err))
-	expect(fake.fzf_runs[1].killed, "child killed")
+	expect(not ok and tostring(err):find("no such file", 1, true), tostring(err))
 
 	fake = install({
 		index_view = { entries = {} },
@@ -838,6 +1523,7 @@ test("the project fzf command is titled and cancelling selects or creates nothin
 		})
 		invoke(fake, {})
 		local argv = fake.fzf_runs[1].argv
+		expect_equal(argv[1], "fzf", "standalone runner defaults to PATH lookup")
 		expect(not table.concat(argv, "\n"):find("--margin", 1, true), "fzf must not add a margin")
 		expect_equal(argument(argv, "--border-label"), " Projects ", "title")
 		expect_equal(argument(argv, "--prompt"), "project> ", "prompt")
@@ -847,6 +1533,38 @@ test("the project fzf command is titled and cancelling selects or creates nothin
 		expect_equal(#fake.created, 0, "created sessions")
 		expect_equal(count(fake.calls, "block.method"), 0, "no session scan on cancel")
 	end
+end)
+
+test("cached project rows open without automatic discovery and keep manual rescan", function()
+	local fake = install({
+		index_view = { entries = { { path = tmp .. "/cached", label = "cached" } }, notice = "cached notice" },
+		open = function()
+			error("opening warm rows must not rescan")
+		end,
+	})
+	invoke(fake, {})
+	local run = fake.fzf_runs[1]
+	expect_equal(shown_rows(run.stdin)[1], "cached notice", "cached notice preserved")
+	expect_equal(shown_rows(run.stdin)[2], "cached", "cached row available immediately")
+	expect(not table.concat(run.argv, "\n"):find("load:", 1, true), "warm cache has no automatic reload")
+	expect(argument(run.argv, "--bind"):match("^ctrl%-r:reload%-sync:"), "Ctrl-R still rescans")
+	expect_equal(#fake.exec_runs, 1, "only fzf runs on the warm browsing path")
+	expect_equal(fake.cached_calls, 1, "one cached read")
+end)
+
+test("empty project rows start automatic initial discovery after fzf loads", function()
+	local fake = install({
+		index_view = { entries = {}, notice = "Discovering Git repositories..." },
+		open = function()
+			error("initial rows must be shown before discovery")
+		end,
+	})
+	invoke(fake, {})
+	local run = fake.fzf_runs[1]
+	expect_equal(shown_rows(run.stdin)[1], "Discovering Git repositories...", "initial discovery notice")
+	expect(argument(run.argv, "--bind"):match("^load:unbind%(load%)%+reload%-sync:"), "load triggers first discovery")
+	expect_equal(#fake.exec_runs, 1, "initial rows do not wait for discovery")
+	expect_equal(fake.login_calls, 0, "runner never captures a login PATH")
 end)
 
 test("a repository without an existing session gets a new one", function()
@@ -1034,16 +1752,24 @@ test("reload rows keep the cached list and say so when refresh fails", function(
 	expect(output:find("\t" .. "x" .. "\t", 1, true), "cached entry kept")
 end)
 
-test("session reload rows list the current sessions", function()
-	install({ sessions = { { session_id = "session:one", label = "one" } } })
+test("session reload rows exclude the invoking session rather than the script session", function()
+	install({
+		session_id = "session:one",
+		sessions = {
+			{ session_id = "session:here", label = "here" },
+			{ session_id = "session:one", label = "one" },
+		},
+	})
 	local written = {}
 	io.write = function(text)
 		written[#written + 1] = text
 	end
-	local ok, err = pcall(require("project-picker").rows, { source = "sessions" })
+	local ok, err = pcall(require("project-picker").rows, { source = "sessions", session_id = "session:here" })
 	io.write = real_write
 	assert(ok, err)
-	expect_equal(shown_rows(table.concat(written))[2], "one", "session row")
+	local rows = shown_rows(table.concat(written))
+	expect_equal(rows[2], "one", "other session row")
+	expect_equal(#rows, 2, "refresh still excludes the invoking session")
 end)
 
 test("the reload command round-trips quotes and braces through the shell", function()
@@ -1072,10 +1798,583 @@ test("the reload command round-trips quotes and braces through the shell", funct
 	expect_equal(lines[5], json_encode({ source = "projects", roots = { root } }), "encoded invocation")
 end)
 
+test("opening actions prepare private fresh rows without starting processes", function()
+	local env = {
+		views = { ["session:a"] = picker_view() },
+		index_view = { entries = { { path = tmp .. "/old", label = "old" } } },
+	}
+	local fake = install(env)
+	local picker = require("project-picker")
+	picker.setup({ roots = { tmp } })
+	expect_equal(fake.cached_calls, 1, "setup primes the repository context")
+	local baseline = #fake.exec_runs
+	local ctx = { session_id = "session:a", client_id = "client:app" }
+	local first_result = fake.actions.project_picker.run(ctx, {})
+	local first = fake.layers[1].layout.block.options.command
+	expect_equal(shown_rows(read_file(first[3]))[2], "old", "first cache contents")
+	env.index_view = { entries = { { path = tmp .. "/new", label = "new" } } }
+	close_picker(fake, first_result)
+	fake.actions.project_picker.run(ctx, {})
+	local second = fake.layers[2].layout.block.options.command
+	expect_equal(shown_rows(read_file(second[3]))[2], "new", "cache read again on the next action")
+	expect_equal(shown_rows(read_file(first[3]))[2], "old", "pending picker owns its snapshot")
+	expect(first[3] ~= second[3] and first[4] ~= second[4], "successive pickers have separate files")
+	expect_equal(fake.cached_calls, 3, "prime plus one read per opening")
+	for _, command in ipairs({ first, second }) do
+		expect_equal(read_file(command[4]), "", "choice output allocated empty")
+		expect_equal(sh("stat -f '%Lp' \"$1\"", command[3]), "600", "private rows")
+		expect_equal(sh("stat -f '%Lp' \"$1\"", command[4]), "600", "private choice")
+		expect(not table.concat(command, "\n"):find("load:", 1, true), "warm rows have no automatic rescan")
+	end
+	fake.session_list = { { session_id = "session:first", label = "first" } }
+	local session_result = fake.actions.session_picker.run(ctx, {})
+	fake.session_list = { { session_id = "session:second", label = "second" } }
+	close_picker(fake, session_result)
+	fake.actions.session_picker.run(ctx, {})
+	expect_equal(shown_rows(read_file(fake.layers[3].layout.block.options.command[3]))[2], "first", "first sessions")
+	expect_equal(shown_rows(read_file(fake.layers[4].layout.block.options.command[3]))[2], "second", "fresh sessions")
+	expect_equal(count(fake.calls, "session.list"), 2, "one current session list per opening")
+	expect_equal(#fake.exec_runs, baseline, "no shell, discovery, Rex CLI, or fzf process on keypress")
+	expect_equal(#fake.resizes, 0, "no resize")
+end)
+
+test("real repository context hashing happens at setup and never per opening", function()
+	local fake = install({ views = { ["session:a"] = view_with({}) } })
+	package.loaded["repository-index"] = assert(loadfile(rex_dir .. "/repository-index.lua"))()
+	local picker = require("project-picker")
+	picker.setup({ roots = { tmp .. "/context-prime-only" } })
+	local hashes = 0
+	for _, run in ipairs(fake.exec_runs) do
+		if run.argv[1] == "/usr/bin/shasum" then
+			hashes = hashes + 1
+		end
+	end
+	expect_equal(hashes, 1, "one setup hash")
+	local baseline = #fake.exec_runs
+	for _ = 1, 3 do
+		fake.actions.project_picker.run({ session_id = "session:a", client_id = "client:app" }, {})
+	end
+	expect_equal(#fake.exec_runs, baseline, "cached context avoids any opening process")
+	local command = fake.layers[1].layout.block.options.command
+	expect(argument(command, "--bind"):match("^load:unbind%(load%)%+reload%-sync:"), "cold cache discovers on load")
+end)
+
+test("opening session rows exclude the action context without script globals", function()
+	for _, script_session in ipairs({ "", "session:other" }) do
+		local fake = install({
+			session_id = script_session ~= "" and script_session or nil,
+			views = { ["session:here"] = view_with({}) },
+			sessions = {
+				{ session_id = "session:here", label = "here" },
+				{ session_id = "session:other", label = "other" },
+			},
+		})
+		open(fake, "session_picker", { session_id = "session:here", client_id = "client:app" })
+		local rows = shown_rows(read_file(fake.layers[1].layout.block.options.command[3]))
+		expect_equal(rows[2], "other", "script context does not hide another session")
+		expect_equal(#rows, 2, "invoking session is excluded")
+	end
+end)
+
+test("direct and retry fzf arguments and records agree for unusual roots and labels", function()
+	local root = tmp .. "/it's {a}\ttab\nnewline"
+	local label = 'it\'s {a} "b"\ttab\nnewline'
+	local fake = install({
+		views = { ["session:a"] = view_with({}) },
+		index_view = { entries = { { path = root .. "/repo", label = label } } },
+	})
+	local picker = require("project-picker")
+	picker.setup({ roots = { root } })
+	fake.actions.project_picker.run({ session_id = "session:a", client_id = "client:app" }, {})
+	local command = fake.layers[1].layout.block.options.command
+	local invocation = launch_invocation(fake, command)
+	invocation.choice_file = nil
+	invoke(fake, invocation)
+	local run = fake.fzf_runs[1]
+	expect_equal(read_file(command[3]), run.stdin, "identical NUL records")
+	local direct = {}
+	for index = 8, #command do
+		direct[#direct + 1] = command[index]
+	end
+	expect_equal(table.concat(direct, "\0"), table.concat(run.argv, "\0"), "one shared fzf argument protocol")
+	expect_equal(launch_invocation(fake, command).roots[1], root, "exact root in the snapshot")
+	expect_equal(shown_rows(run.stdin)[2], 'it\'s {a} "b"\\x09tab\\x0anewline', "safe shown label")
+end)
+
+test("failed preparation and layer creation remove only their own private files", function()
+	for _, stage in ipairs({ "encode", "reload encode", "open", "write", "close", "tmpname", "layer", "throw" }) do
+		local env = { views = { ["session:a"] = view_with({}) } }
+		if stage == "layer" then
+			env.layer_error = "layer denied"
+		elseif stage == "throw" then
+			env.layer_throw = "layer denied"
+		end
+		local fake = install(env)
+		require("project-picker").setup({ roots = { tmp } })
+		local sentinel = tmp .. "/unrelated"
+		write_file(sentinel, "keep")
+		local allocated, allocations, encodings = {}, 0, 0
+		local real_tmpname, real_open, real_encode = os.tmpname, io.open, rex.json.encode
+		os.tmpname = function()
+			allocations = allocations + 1
+			if stage == "tmpname" and allocations == 2 then
+				error("tmpname denied")
+			end
+			local path = real_tmpname()
+			allocated[#allocated + 1] = path
+			return path
+		end
+		io.open = function(path, mode)
+			if mode == "wb" and allocations == 2 then
+				if stage == "open" then
+					return nil, "open denied"
+				elseif stage == "write" or stage == "close" then
+					local file = assert(real_open(path, mode))
+					return {
+						write = function(_, text)
+							if stage == "write" then
+								return nil, "write denied"
+							end
+							return file:write(text)
+						end,
+						close = function()
+							assert(file:close())
+							return nil, "close denied"
+						end,
+					}
+				end
+			end
+			return real_open(path, mode)
+		end
+		rex.json.encode = function(value)
+			encodings = encodings + 1
+			if stage == "encode" or (stage == "reload encode" and encodings == 2) then
+				return nil, "encode denied"
+			end
+			return real_encode(value)
+		end
+		local ok, err = pcall(
+			fake.actions.project_picker.run,
+			{ session_id = "session:a", client_id = "client:app" },
+			{}
+		)
+		os.tmpname, io.open, rex.json.encode = real_tmpname, real_open, real_encode
+		expect(not ok and tostring(err):find("denied", 1, true), stage .. " propagates failure")
+		expect_equal(#allocated, stage == "tmpname" and 1 or 2, stage .. " allocated files")
+		for _, path in ipairs(allocated) do
+			local file = io.open(path, "rb")
+			if file then
+				file:close()
+			end
+			expect(not file, stage .. " removes " .. path)
+		end
+		expect_equal(read_file(sentinel), "keep", "unrelated file survives " .. stage)
+		expect_equal(#fake.layers, (stage == "layer" or stage == "throw") and 1 or 0, "no premature layer")
+	end
+end)
+
+local function accepted_file(source, id, label, query)
+	local env = {
+		views = { ["session:host"] = view_with({}) },
+		sessions = { { session_id = id, label = label } },
+		index_view = { entries = { { path = id, label = label } } },
+	}
+	local fake = install(env)
+	open(fake, source == "sessions" and "session_picker" or "project_picker", {
+		session_id = "session:host",
+		client_id = "client:app",
+	})
+	local command = fake.layers[1].layout.block.options.command
+	local row = assert(read_file(command[3]):match("^[^%z]*%z([^%z]+)%z"), "one selectable row")
+	write_file(command[4], (query or "") .. "\0" .. row .. "\0")
+	return launch_invocation(fake, command)
+end
+
+test("accepted sessions select directly without fzf or loading either source", function()
+	for _, empty in ipairs({ true, false }) do
+		local invocation = accepted_file("sessions", "session:target", "target", "tar")
+		local fake = install({
+			views = { ["session:target"] = empty and {} or view_with({}) },
+			fzf = function()
+				error("accepted choice must not start fzf")
+			end,
+		})
+		local real_open, reads = io.open, 0
+		io.open = function(path, mode)
+			if path == invocation.choice_file then
+				reads = reads + 1
+			end
+			return real_open(path, mode)
+		end
+		local ok, err = pcall(invoke, fake, invocation)
+		io.open = real_open
+		assert(ok, err)
+		expect_equal(reads, 1, "read accepted output once")
+		expect_equal(fake.queued[1].args.session_id, "session:target", "exact chosen ID")
+		expect_equal(#fake.windows, empty and 1 or 0, "only an empty destination gets a shell")
+		expect_equal(#fake.exec_runs, 0, "no fzf or process before session selection")
+		expect_equal(count(fake.calls, "session.list"), 0, "no source list")
+		expect_equal(fake.cached_calls or 0, 0, "no cache read")
+		expect(read_file(invocation.choice_file):find("tar\0", 1, true), "Lua leaves file ownership with the shell")
+	end
+end)
+
+test("accepted projects preserve exact paths and reuse the matching window without fzf or cache", function()
+	local label = "accepted it's {a}\tline\nnext"
+	local repo = make_repo(label)
+	for _, reuse in ipairs({ true, false }) do
+		local invocation = accepted_file("projects", repo, label, "accepted")
+		local fake = install({
+			sessions = reuse and { { session_id = "session:existing", label = "existing" } } or {},
+			views = {
+				["session:existing"] = view_with(
+					{ { kind = "tiled", blocks = { terminal("block:repo") } } },
+					"window:repo"
+				),
+			},
+			processes = { ["block:repo"] = repo },
+		})
+		invoke(fake, invocation)
+		expect_equal(#fake.fzf_runs, 0, "no picker execution")
+		expect_equal(fake.cached_calls or 0, 0, "no cache read")
+		expect_equal(#fake.created, reuse and 0 or 1, "reuse or create once")
+		if reuse then
+			expect_equal(fake.queued[1].args.session_id, "session:existing", "existing session")
+			expect_equal(fake.queued[1].args.window_id, "window:repo", "matching window")
+			expect_equal(fake.focused[1].block_id, "block:repo", "matching block")
+		else
+			expect_equal(fake.created[1].label, label, "exact label")
+			expect_equal(fake.created[1].initial_windows[1].layout.block.options.cwd, repo, "exact repository")
+		end
+	end
+end)
+
+test("stale accepted choices retry with current rows, notice, and the original query", function()
+	for _, source in ipairs({ "sessions", "projects" }) do
+		local id = source == "sessions" and "session:vanished" or tmp .. "/vanished"
+		local query = "it's {query}\ttext"
+		local invocation = accepted_file(source, id, "vanished", query)
+		local fake = install({
+			sessions = { { session_id = "session:alive", label = "alive" } },
+			index_view = { entries = { { path = tmp .. "/alive", label = "alive" } } },
+		})
+		invoke(fake, invocation)
+		expect_equal(#fake.fzf_runs, 1, "only retry starts fzf")
+		local run = fake.fzf_runs[1]
+		expect_equal(run.argv[1], invocation.fzf, "retry uses the captured executable")
+		expect_equal(run.argv[1], FZF, "no PATH or mise lookup on retry")
+		expect_equal(argument(run.argv, "--query"), query, "query retained")
+		local rows = shown_rows(run.stdin)
+		expect(rows[1]:find("no longer", 1, true), "stale notice")
+		expect_equal(rows[2], "alive", "current list loaded for retry")
+		expect_equal(#fake.queued + #fake.created, 0, "nothing selected on retry cancel")
+		expect(read_file(invocation.choice_file):find(query .. "\0", 1, true), "Lua does not delete choice file")
+	end
+end)
+
+test("accepted files and blocking fzf reject the same malformed selection protocol", function()
+	for _, output in ipairs({
+		"",
+		"query\0",
+		"query\0status\ttext\t\0",
+		"query\0zz\ttext\t74657874\0",
+		"query\0" .. "73657373696f6e3a61\twrong\t74657874\0",
+		"query\0" .. "73657373696f6e3a61\ttext\t74657874\0extra\0",
+		"query\0" .. "73657373696f6e3a61\ttext\t74657874",
+	}) do
+		for _, pending in ipairs({ true, false }) do
+			local path = tmp .. "/malformed-choice"
+			write_file(path, output)
+			local fake = install({
+				fzf = function()
+					return { code = 0, stdout = output, stderr = "" }
+				end,
+			})
+			local invocation = { source = "sessions", choice_file = pending and path or nil }
+			local ok, err = pcall(invoke, fake, invocation)
+			expect(not ok and tostring(err):find("invalid selection", 1, true), "reject malformed output")
+			expect_equal(#fake.queued + #fake.windows, 0, "nothing selected")
+			expect_equal(read_file(path), output, "passed file never removed or rewritten")
+		end
+	end
+end)
+
+test("invalid or missing choice files fail before source loading", function()
+	for _, path in ipairs({ false, {}, "", "bad\0path", tmp .. "/absent-choice" }) do
+		local fake = install()
+		local ok = pcall(invoke, fake, { source = "sessions", choice_file = path })
+		expect(not ok, "invalid file boundary")
+		expect_equal(#fake.exec_runs + #fake.calls, 0, "no source list or fzf")
+	end
+end)
+
+test("launch wrapper runs fzf first, calls the matching Rex only on accept, and cleans up", function()
+	local directory = tmp .. "/wrapper it's {a}\twith\nlines"
+	sh('mkdir -p "$1"', directory)
+	local fzf, rex = directory .. "/fzf", directory .. "/rex"
+	write_file(
+		fzf,
+		[[#!/bin/sh
+test "$FZF_DEFAULT_OPTS" = '' && test "$FZF_DEFAULT_OPTS_FILE" = '' || exit 90
+printf 'fzf\000' >> "$PICKER_TEST_LOG"
+printf '%s\000' "$@" >> "$PICKER_TEST_FZF_ARGS"
+cat > "$PICKER_TEST_ROWS"
+cat "$PICKER_TEST_OUTPUT"
+test ! -e "$PICKER_TEST_REX_ARGS" || exit 91
+exit "$PICKER_TEST_FZF_STATUS"
+]]
+	)
+	write_file(
+		rex,
+		[[#!/bin/sh
+test -f "$PICKER_TEST_INPUT" && test -f "$PICKER_TEST_CHOICE" || exit 92
+IFS= read -r keyboard && test "$keyboard" = 'keyboard input' || exit 93
+printf 'rex\000' >> "$PICKER_TEST_LOG"
+printf '%s\000' "$@" > "$PICKER_TEST_REX_ARGS"
+cat "$PICKER_TEST_CHOICE" > "$PICKER_TEST_SELECTED"
+exit "$PICKER_TEST_REX_STATUS"
+]]
+	)
+	sh('chmod +x "$1" "$2"', fzf, rex)
+	for _, case in ipairs({
+		{ fzf = 0, rex = 0, result = 0 },
+		{ fzf = 0, rex = 7, result = 7 },
+		{ fzf = 1, result = 0 },
+		{ fzf = 130, result = 0 },
+		{ fzf = 2, result = 2 },
+		{ fzf = 127, result = 127 },
+	}) do
+		local input, choice = directory .. "/rows", directory .. "/choice"
+		local log, fzf_args, rex_args = directory .. "/log", directory .. "/fzf-args", directory .. "/rex-args"
+		local rows, output, selected = directory .. "/received", directory .. "/output", directory .. "/selected"
+		os.remove(rex_args)
+		write_file(log, "")
+		write_file(fzf_args, "")
+		write_file(input, "status\t\t\0id\ttext\tencoded\0")
+		write_file(choice, "")
+		write_file(output, "query\0id\ttext\tencoded\0")
+		local sentinel = directory .. "/sentinel"
+		write_file(sentinel, "keep")
+		local client, runner, snapshot =
+			"client:chosen", directory .. "/runner.lua", '{"source":"sessions","str":"it\'s {a}"}'
+		local argv = {
+			"/bin/sh",
+			"-c",
+			[[
+export REX_BIN_DIR="$1" PICKER_TEST_LOG="$2" PICKER_TEST_FZF_ARGS="$3" PICKER_TEST_REX_ARGS="$4"
+export PICKER_TEST_ROWS="$5" PICKER_TEST_OUTPUT="$6" PICKER_TEST_FZF_STATUS="$7" PICKER_TEST_REX_STATUS="$8"
+export PICKER_TEST_INPUT="$9"
+shift 9
+export PICKER_TEST_CHOICE="$1" PICKER_TEST_SELECTED="$2"
+export FZF_DEFAULT_OPTS='--bad-option' FZF_DEFAULT_OPTS_FILE='/bad/file'
+shift 2
+exec /bin/sh "$@" <<'PICKER_STDIN'
+keyboard input
+PICKER_STDIN
+]],
+			"wrapper-test",
+			directory,
+			log,
+			fzf_args,
+			rex_args,
+			rows,
+			output,
+			tostring(case.fzf),
+			tostring(case.rex or 0),
+			input,
+			choice,
+			selected,
+			rex_dir .. "/picker-launch.sh",
+			input,
+			choice,
+			client,
+			runner,
+			snapshot,
+			fzf,
+			"--query",
+			"it's {a}\ttab\nline",
+		}
+		local result = real_exec(argv)
+		expect_equal(result.code, case.result, "wrapper exit status for fzf " .. case.fzf)
+		expect_equal(read_file(rows), "status\t\t\0id\ttext\tencoded\0", "fzf receives file bytes")
+		expect_equal(read_file(fzf_args), "--query\0it's {a}\ttab\nline\0", "fzf receives exact argv")
+		expect_equal(read_file(log), case.fzf == 0 and "fzf\0rex\0" or "fzf\0", "Rex starts only after accept")
+		if case.fzf == 0 then
+			expect_equal(
+				read_file(rex_args),
+				"--autostart=false\0-C\0" .. client .. "\0do\0" .. runner .. "\0--args\0" .. snapshot .. "\0",
+				"matching Rex invocation"
+			)
+			expect_equal(read_file(selected), read_file(output), "accepted output survives until Rex reads it")
+		end
+		for _, path in ipairs({ input, choice }) do
+			local file = io.open(path, "rb")
+			if file then
+				file:close()
+			end
+			expect(not file, "shell owns cleanup on every exit")
+		end
+		expect_equal(read_file(sentinel), "keep", "cleanup touches only the two owned files")
+	end
+end)
+
+test("launch wrapper cleans up after redirection failure", function()
+	local input, choice = tmp .. "/absent-rows", tmp .. "/error-choice"
+	write_file(choice, "")
+	local result = real_exec({
+		"/bin/sh",
+		rex_dir .. "/picker-launch.sh",
+		input,
+		choice,
+		"client:app",
+		"/unused-runner",
+		"{}",
+		"/usr/bin/true",
+	})
+	expect(result.code ~= 0, "redirection failure propagates")
+	local file = io.open(choice, "rb")
+	if file then
+		file:close()
+	end
+	expect(not file, "cleanup after redirection failure")
+end)
+
+for _, schedule in ipairs({ "blocked", "publication" }) do
+	test("signalling only the wrapper reaps fzf or Rex during " .. schedule .. " before cleanup", function()
+		local directory = tmp .. "/" .. schedule .. "-wrapper"
+		sh('mkdir -p "$1"', directory)
+		local launcher = rex_dir .. "/picker-launch.sh"
+		if schedule == "publication" then
+			local instrumented, points = read_file(launcher):gsub("([ \t]*)child=%$!\n", function(indent)
+				return indent
+					.. [[PICKER_TEST_LAUNCH_COUNT=$((${PICKER_TEST_LAUNCH_COUNT:-0} + 1))
+if test "$PICKER_TEST_LAUNCH_COUNT" = "$PICKER_TEST_PAUSE_LAUNCH"; then
+  printf '%s\n' "$!" > "$PICKER_TEST_PAUSED"
+  kill -STOP "$$"
+fi
+]]
+					.. indent
+					.. "child=$!\n"
+			end)
+			expect(points > 0, "instrument a real fork-to-publication boundary")
+			launcher = directory .. "/picker-launch.sh"
+			write_file(launcher, instrumented)
+		end
+		local blocker = directory .. "/rex"
+		write_file(
+			blocker,
+			[[#!/bin/sh
+printf '%s\n' "$$" > "$PICKER_TEST_CHILD_PID"
+exec /bin/sleep 30
+]]
+		)
+		sh('chmod +x "$1"', blocker)
+		for _, stage in ipairs({ "fzf", "rex" }) do
+			for _, signal in ipairs({ "TERM", "HUP" }) do
+				local input, choice = directory .. "/rows", directory .. "/choice"
+				local pid_file, sentinel = directory .. "/child-pid", directory .. "/sentinel"
+				local paused = directory .. "/paused"
+				os.remove(pid_file)
+				os.remove(paused)
+				write_file(input, "rows")
+				write_file(choice, "")
+				write_file(sentinel, "keep")
+				local result = real_exec({
+					"/bin/sh",
+					"-c",
+					[[
+export REX_BIN_DIR="$1" PICKER_TEST_CHILD_PID="$2"
+signal=$3
+export PICKER_TEST_PAUSE_LAUNCH="$4" PICKER_TEST_PAUSED="$5"
+shift 5
+/bin/sh "$@" </dev/null &
+wrapper=$!
+attempt=0
+ready=0
+while test "$attempt" -lt 200; do
+  if test -s "$PICKER_TEST_CHILD_PID"; then
+    if test "$PICKER_TEST_PAUSE_LAUNCH" = 0; then
+      ready=1
+      break
+    elif test -s "$PICKER_TEST_PAUSED"; then
+      case $(ps -o state= -p "$wrapper") in
+      *T*) ready=1; break ;;
+      esac
+    fi
+  fi
+  sleep 0.01
+  attempt=$((attempt + 1))
+done
+child=$(cat "$PICKER_TEST_CHILD_PID")
+if test "$ready" != 1; then
+  kill -KILL "$wrapper" ${child:+"$child"} 2>/dev/null
+  wait "$wrapper"
+  exit 90
+fi
+if test "$PICKER_TEST_PAUSE_LAUNCH" != 0; then
+  test "$(cat "$PICKER_TEST_PAUSED")" = "$child" || exit 93
+fi
+kill -0 "$child" || exit 90
+kill -"$signal" "$wrapper" || exit 91
+if test "$PICKER_TEST_PAUSE_LAUNCH" != 0; then
+  kill -CONT "$wrapper" || exit 92
+fi
+attempt=0
+while kill -0 "$wrapper" 2>/dev/null && test "$attempt" -lt 200; do
+  sleep 0.01
+  attempt=$((attempt + 1))
+done
+timed_out=0
+if kill -0 "$wrapper" 2>/dev/null; then
+  timed_out=1
+  kill -KILL "$child" "$wrapper" 2>/dev/null
+fi
+wait "$wrapper"
+status=$?
+child_alive=0
+if kill -0 "$child" 2>/dev/null; then
+  child_alive=1
+  kill -KILL "$child" 2>/dev/null
+fi
+printf '%s %s %s\n' "$status" "$timed_out" "$child_alive"
+]],
+					"signal-test",
+					directory,
+					pid_file,
+					signal,
+					schedule == "publication" and (stage == "fzf" and "1" or "2") or "0",
+					paused,
+					launcher,
+					input,
+					choice,
+					"client:app",
+					"/unused-runner",
+					"{}",
+					stage == "fzf" and blocker or "/usr/bin/true",
+				})
+				expect_equal(result.code, 0, stage .. " signal test completed")
+				expect_equal(result.stdout, (signal == "TERM" and "143" or "129") .. " 0 0\n", stage .. " " .. signal)
+				for _, path in ipairs({ input, choice }) do
+					local file = io.open(path, "rb")
+					if file then
+						file:close()
+					end
+					expect(not file, stage .. " signal removes owned file")
+				end
+				expect_equal(read_file(sentinel), "keep", "signal cleanup leaves unrelated files")
+			end
+		end
+	end)
+end
+
 local failures = 0
 for _, case in ipairs(tests) do
 	local ok, err = pcall(case.fn)
 	io.write = real_write
+	for _, path in ipairs(owned_files) do
+		os.remove(path)
+	end
+	owned_files = {}
 	print((ok and "ok   " or "FAIL ") .. case.name .. (ok and "" or "\n     " .. tostring(err)))
 	if not ok then
 		failures = failures + 1
