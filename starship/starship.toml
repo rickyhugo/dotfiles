@@ -2,7 +2,9 @@
 
 palette = "catppuccin_mocha"
 add_newline = false
-command_timeout = 1000
+# Render relevant modules instead of probing every language and integration.
+format = "$username$hostname$directory$git_branch$git_commit$git_state$git_status$package$nodejs$deno$python$ruby$rust$golang$lua$terraform$docker_context$aws$gcloud$cmd_duration$jobs$status$line_break$character"
+command_timeout = 300
 
 [battery]
 disabled = true
