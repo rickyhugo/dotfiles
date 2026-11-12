@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "models": {},
+  "roles": {
+    "feature": "inherit",
+    "refactoring": "inherit",
+    "bug-fix": "inherit",
+    "perf-issue": "inherit",
+    "hillclimb": "inherit",
+    "judgment": "inherit",
+    "hardest": "inherit",
+    "how-explorer": "inherit",
+    "how-explainer": "inherit",
+    "why-investigator": "inherit",
+    "why-synthesizer": "inherit",
+    "reflect-tooling": "inherit",
+    "reflect-judgment": "inherit",
+    "arena-runners": ["inherit", "inherit"],
+    "arena-judges": [],
+    "swarm-worker": "inherit",
+    "architect-runners": ["inherit", "inherit"],
+    "interrogate-reviewers": ["inherit", "inherit"]
+  }
+}

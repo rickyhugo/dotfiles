@@ -17,21 +17,28 @@ Re-runnable and idempotent. Running as root is rejected — even the scripts hav
 
 ## Agent skills
 
-Mise clones pstack, Cursor Team Kit, Matt Pocock's skills, and tstack into
-`~/.external-skills/`, then links each skill into `~/.agents/skills/` with a
-prefix naming its source (`pstack-`, `cursor-`, `mp-`, `tstack-`). Claude Code,
-Codex, and OpenCode all read that directory. The entries live in the
-`[dotfiles]` and `[bootstrap.repos]` sections of `~/.config/mise/config.toml`.
+Pstack, Cursor Team Kit, and tstack live in [`agents/pstack/`](agents/pstack),
+[`agents/cursor-team-kit/`](agents/cursor-team-kit), and [`agents/tstack/`](agents/tstack).
+Each has an `UPSTREAM.md` record for selective manual updates. No plugin packaging
+or test suites are kept.
+
+Mise links their skills into `~/.agents/skills/` with `pstack-`, `cursor-`, and
+`tstack-` prefixes. Matt Pocock's skills still come from a mise-managed checkout
+under `~/.external-skills/`, using `mp-`. Claude Code, Codex, and OpenCode share
+the directory. Deployment entries live in `~/.config/mise/config.toml`.
 
 [`agents/`](agents) holds the rest, deployed by `mise dot apply`:
 
 - `AGENTS.md`: global instructions for every harness, linked as `~/.claude/CLAUDE.md`,
   `~/.codex/AGENTS.md`, and `~/.config/opencode/AGENTS.md`.
-- `cursor-compat.md`: how pstack and Team Kit skills map Cursor's tools, agents,
-  and models onto each harness.
+- `pstack/AGENTS.md` and `pstack/harnesses/`: shared execution rules and external
+  harness adapters. Team Kit and tstack reuse it through their own `AGENTS.md`.
 - `claude/`, `codex/`, `opencode/`: helper agents such as `poteto-agent`, one
   file per host.
 - `skills/`: my own skills
+
+Pstack reads model choices directly from `~/.config/pstack/config.json` and
+machine-specific `config.local.json`; see its [configuration guide](agents/pstack/docs/configuration.md).
 
 ## Neovim project tools
 
