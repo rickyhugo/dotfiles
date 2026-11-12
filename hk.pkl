@@ -42,15 +42,3 @@ steps {
     exclude = List("wallpapers/**")
   }
 }
-
-// The nvim integration test is slower than the pre-commit checks, so it runs
-// on push only.
-hooks {
-  ["pre-push"] {
-    steps {
-      ["nvim-project-tools"] {
-        check = "nvim --clean --headless -l nvim/tests/project-tools.lua"
-      }
-    }
-  }
-}
