@@ -200,12 +200,13 @@ def main():
             lambda: ".dotfiles" not in screen(source, project),
             "Typing did not filter repository rows",
         )
-        assert open_picker(source, "project_picker") == project, (
-            "Reopening the project picker created another block"
-        )
+        previous = project
+        project = open_picker(source, "project_picker")
+        assert project != previous, "Opening the same picker did not replace it"
         assert len(floating(source)) == 1, "Duplicate project picker is open"
-        assert "picker-no-match-" + token in screen(source, project), (
-            "Reusing the picker reset its query"
+        eventually(
+            lambda: ".dotfiles" in screen(source, project),
+            "Replacement project picker did not start with a fresh query",
         )
         api(
             "session.set_layer_state",
@@ -213,12 +214,17 @@ def main():
             layer_id=floating(source)[0]["layer_id"],
             state="minimized",
         )
-        assert open_picker(source, "project_picker") == project, (
-            "Restoring the minimized picker created another block"
+        sessions = open_picker(source, "session_picker")
+        assert sessions != project, "Session picker reused the project block"
+        assert len(floating(source)) == 1, "Minimized project picker was not closed"
+        assert floating(source)[0]["blocks"][0]["block_id"] == sessions
+        eventually(
+            lambda: target_label in screen(source, sessions),
+            "Session picker did not replace the minimized project picker",
         )
-        assert floating(source)[0].get("state") != "minimized", (
-            "Reopening did not restore the minimized picker"
-        )
+        project = open_picker(source, "project_picker")
+        assert len(floating(source)) == 1, "Project picker did not replace sessions"
+        assert floating(source)[0]["blocks"][0]["block_id"] == project
         command("config", "reload", "--json")
         previous_away = presented_at(away, away_block)
         select(away)
@@ -226,44 +232,51 @@ def main():
             lambda: presented_after(away, away_block, previous_away),
             "The app did not switch away from the picker",
         )
-        previous_project = presented_at(source, project)
-        assert open_picker(target, "project_picker") == project, (
-            "Reload or another session created another project picker"
-        )
+        for kind in ("projects", "sessions"):
+            api(
+                "session.new_layer",
+                session_id=source,
+                window_id=view(source)["active_window_id"],
+                bounds=[0.2, 0.2, 0.6, 0.6],
+                layout={
+                    "block": {
+                        "flavor": "com.superlogical.terminal.shell",
+                        "label": "rex.picker." + kind + ":" + options.client,
+                        "options": {
+                            "shell": "none",
+                            "login": False,
+                            "command": ["/bin/sleep", "300"],
+                        },
+                    }
+                },
+            )
+        assert len(floating(source)) == 3, "Legacy picker fixtures were not created"
+        sessions = open_picker(away, "session_picker")
+        assert not floating(source), "Reload left the old project picker open"
+        assert len(floating(away)) == 1, "Replacement session got duplicate pickers"
         eventually(
-            lambda: presented_after(source, project, previous_project),
-            "Project reuse did not switch back to its owning session",
+            lambda: "session>" in screen(away, sessions),
+            "Session picker did not open in the requesting session",
         )
         assert not floating(target), "Another session got a duplicate picker"
-        assert not view(target).get("windows"), "Reusing a picker created a window"
-        assert "picker-no-match-" + token in screen(source, project), (
-            "Rediscovering the picker reset its query"
+        assert not view(target).get("windows"), (
+            "Replacement touched an unrelated session"
         )
-        sessions = open_picker(source, "session_picker")
+        select(source)
+        project = open_picker(source, "project_picker")
+        assert not floating(away), (
+            "Project picker left the session picker open elsewhere"
+        )
+        assert len(floating(source)) == 1, (
+            "Replacement created duplicate project pickers"
+        )
+        first_bounds = floating(source)[0]["bounds"]
         eventually(
-            lambda: target_label in screen(source, sessions),
-            "Session picker did not open beside the project picker",
+            lambda: ".dotfiles" in screen(source, project),
+            "Project picker did not reopen in the requesting session",
         )
-        assert len(floating(source)) == 2, "Different pickers did not coexist"
-        previous_away = presented_at(away, away_block)
-        select(away)
-        eventually(
-            lambda: presented_after(away, away_block, previous_away),
-            "The app did not switch away from the session picker",
-        )
-        previous_sessions = presented_at(source, sessions)
-        assert open_picker(target, "session_picker") == sessions, (
-            "Another session got a duplicate session picker"
-        )
-        eventually(
-            lambda: presented_after(source, sessions, previous_sessions),
-            "Session reuse did not switch back to its owning session",
-        )
-        assert len(floating(source)) == 2, "Reopening sessions created a duplicate"
-        key(source, sessions, "escape")
-        eventually(lambda: len(floating(source)) == 1, "Session picker did not close")
         print(
-            "PASS each picker is reused across sessions and config reload without resetting its query"
+            "PASS either picker replaces the previous picker across sessions, minimized state, and config reload"
         )
         key(source, project, "ctrl+u")
         send(source, project, ".dotfiles")
@@ -280,32 +293,39 @@ def main():
         eventually(lambda: not floating(source), "Escape left the project picker open")
         print("PASS project picker cancellation cleans up its layer")
 
-        def concurrent_open(_):
-            return command(
+        def concurrent_open(action):
+            result = command(
                 "-C",
                 options.client,
                 "do",
-                "project_picker",
+                action,
                 "-s",
                 source,
                 "client_id=" + options.client,
                 "--json",
             )
+            assert len(floating(source)) <= 1, "Concurrent opens showed two pickers"
+            return result
 
         with ThreadPoolExecutor(max_workers=6) as workers:
-            opened = list(workers.map(concurrent_open, range(6)))
+            opened = list(
+                workers.map(concurrent_open, ["project_picker", "session_picker"] * 3)
+            )
         blocks = {result["block_ids"][0] for result in opened if result}
-        assert len(blocks) == 1, "Concurrent opens returned different picker blocks"
+        assert blocks, "Concurrent opens did not create a picker"
         assert len(floating(source)) == 1, "Concurrent opens created duplicate pickers"
-        project = blocks.pop()
+        project = floating(source)[0]["blocks"][0]["block_id"]
+        assert project in blocks, "Live picker was not returned by an opening action"
         eventually(
-            lambda: "project>" in screen(source, project),
+            lambda: any(
+                prompt in screen(source, project) for prompt in ("project>", "session>")
+            ),
             "Concurrent picker launch did not render",
         )
         key(source, project, "escape")
         eventually(lambda: not floating(source), "Concurrent picker did not close")
         print(
-            "PASS concurrent opens create only one picker and cancellation permits reopening"
+            "PASS concurrent mixed-type opens leave only one picker and cancellation permits reopening"
         )
 
         project = open_picker(source, "project_picker")
@@ -382,11 +402,22 @@ def main():
             session_id=source,
             window_id=repo_window["window_id"],
         )
-        assert open_picker(source, "project_picker") == project, (
-            "Another tab got a duplicate project picker"
+        previous = project
+        project = open_picker(source, "project_picker")
+        assert project != previous, (
+            "Opening from another tab did not replace the picker"
         )
-        assert view(source)["active_window_id"] == host_window, (
-            "Reusing the picker did not focus its original tab"
+        assert len(floating(source)) == 1, "Another tab got a duplicate picker"
+        assert view(source)["active_window_id"] == repo_window["window_id"], (
+            "Replacement did not stay in the requesting tab"
+        )
+        key(source, project, "escape")
+        eventually(lambda: not floating(source), "Replacement picker did not close")
+        api("session.focus_window", session_id=source, window_id=host_window)
+        project = open_picker(source, "project_picker")
+        eventually(
+            lambda: "project>" in screen(source, project),
+            "Repository picker did not reopen in the host tab",
         )
         key(source, project, "ctrl+r")
         send(source, project, repository_label)

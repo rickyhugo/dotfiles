@@ -4,10 +4,7 @@ local terminal = "com.superlogical.terminal.shell"
 local theme = { background = "#1e1e2e", foreground = "#cdd6f4", scheme = "dark" }
 local card = { columns = 100, rows = 30, max_width = 0.9, max_height = 0.85 }
 local script_directory
-local vm_picker_slots = {
-	projects = {},
-	sessions = {},
-}
+local vm_picker_slots = {}
 
 local function exec(argv, options)
 	local result, err = rex.exec(argv, options)
@@ -494,7 +491,8 @@ local function app_client(ctx, requested)
 	error("Cannot tell which Rex app to use. Press the shortcut in that app, or pass client_id=<app client ID>", 0)
 end
 
-local function find_picker(view, owner, label)
+local function find_pickers(view, owner, labels)
+	local instances = {}
 	for _, window in ipairs(view.windows or {}) do
 		for _, layer in ipairs(window.layers or {}) do
 			local blocks = layer.blocks or {}
@@ -502,9 +500,9 @@ local function find_picker(view, owner, label)
 				layer.kind == "floating"
 				and #blocks == 1
 				and blocks[1].flavor == terminal
-				and blocks[1].label == label
+				and labels[blocks[1].label]
 			then
-				return {
+				instances[#instances + 1] = {
 					session_id = owner,
 					window_id = window.window_id,
 					layer_id = layer.layer_id,
@@ -513,41 +511,19 @@ local function find_picker(view, owner, label)
 			end
 		end
 	end
+	return instances
 end
 
-local function discover_picker(label, session_id)
-	local sessions = attach_all()
-	local current, err = rex.call("session.view", { session_id = session_id })
-	assert(current, err)
-	local instance = find_picker(current, session_id, label)
-	if instance then
-		return instance, current
-	end
-	for _, session in ipairs(sessions) do
-		if session.session_id ~= session_id then
-			local view, view_err = rex.call("session.view", { session_id = session.session_id })
-			assert(view or rex_error_code(view_err) == "session_not_found", view_err)
-			instance = view and find_picker(view, session.session_id, label)
-			if instance then
-				return instance, current
-			end
-		end
-	end
-	return nil, current
-end
-
-local function restore_picker(instance, client)
+local function close_picker(instance)
 	attach_all()
-	local restored, err = rex.call("session.set_layer_state", {
+	local closed, err = rex.call("session.close_layer", {
 		session_id = instance.session_id,
 		layer_id = instance.layer_id,
-		state = "normal",
-		focus = true,
 	})
-	if not restored then
+	if not closed then
 		local code = rex_error_code(err)
 		if code == "not_found" or code == "session_not_found" then
-			return false
+			return
 		end
 		local view = rex.call("session.view", { session_id = instance.session_id })
 		if view then
@@ -563,16 +539,33 @@ local function restore_picker(instance, client)
 				assert(session.session_id ~= instance.session_id, err)
 			end
 		end
-		return false
 	end
-	local selected, select_err = rex.call("client.perform", {
-		client_id = client,
-		session_id = instance.session_id,
-		action = "session.select",
-		args = { session_id = instance.session_id, window_id = instance.window_id },
-	})
-	assert(selected, select_err)
-	return true
+end
+
+local function discover_pickers(client, session_id)
+	local labels = {
+		["rex.picker.projects:" .. client] = true,
+		["rex.picker.sessions:" .. client] = true,
+	}
+	local sessions = attach_all()
+	local current, err = rex.call("session.view", { session_id = session_id })
+	assert(current, err)
+	local instances = find_pickers(current, session_id, labels)
+	for _, session in ipairs(sessions) do
+		if session.session_id ~= session_id then
+			local view, view_err = rex.call("session.view", { session_id = session.session_id })
+			assert(view or rex_error_code(view_err) == "session_not_found", view_err)
+			for _, instance in ipairs(view and find_pickers(view, session.session_id, labels) or {}) do
+				instances[#instances + 1] = instance
+			end
+		end
+	end
+	for _, instance in ipairs(instances) do
+		close_picker(instance)
+	end
+	if #instances == 0 then
+		return current
+	end
 end
 
 local function picker_window(session_id, block_id, view)
@@ -642,13 +635,13 @@ local function recover_picker_launch(slot)
 			assert(session.session_id ~= launch.session_id, err)
 		end
 	end
-	slot.instance = view and find_picker(view, launch.session_id, launch.label) or nil
+	slot.instance = view and find_pickers(view, launch.session_id, { [launch.label] = true })[1] or nil
 	if slot.instance then
 		launch.input_file, launch.choice_file = nil, nil
 	else
 		cleanup_launch(launch)
 	end
-	slot.discovered = slot.instance ~= nil
+	slot.discovered = false
 	slot.pending_launch = nil
 end
 
@@ -726,10 +719,10 @@ exit 1
 			run = function(ctx, args)
 				assert(ctx.session_id, "Open the picker from a Rex session")
 				local client = app_client(ctx, args and args.client_id)
-				local slot = vm_picker_slots[name][client]
+				local slot = vm_picker_slots[client]
 				if not slot then
 					slot = { busy = false, discovered = false }
-					vm_picker_slots[name][client] = slot
+					vm_picker_slots[client] = slot
 				end
 				if slot.busy then
 					return
@@ -742,15 +735,13 @@ exit 1
 					if slot.pending_launch then
 						recover_picker_launch(slot)
 					end
-					if not slot.instance and not slot.discovered then
-						slot.instance, current = discover_picker(label, ctx.session_id)
-						slot.discovered = true
-					end
 					if slot.instance then
-						if restore_picker(slot.instance, client) then
-							return { layer_id = slot.instance.layer_id, block_ids = slot.instance.block_ids }
-						end
+						close_picker(slot.instance)
 						slot.instance = nil
+					end
+					if not slot.discovered then
+						current = discover_pickers(client, ctx.session_id)
+						slot.discovered = true
 					end
 					local window = picker_window(ctx.session_id, ctx.block_id, current)
 					launch.window_id = window.window_id
