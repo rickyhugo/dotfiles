@@ -1,5 +1,7 @@
 function zvm_config {
 	ZVM_LINE_INIT_MODE=$ZVM_MODE_NORMAL
+	# NEX waits on Escape twice; 10 ms keeps local mode switches responsive.
+	ZVM_ESCAPE_KEYTIMEOUT=0.01
 
 	# Match zvm_define_widget without its per-widget zle/declare subprocesses.
 	zmodload zsh/parameter

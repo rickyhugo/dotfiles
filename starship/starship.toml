@@ -2,8 +2,8 @@
 
 palette = "catppuccin_mocha"
 add_newline = false
-# Render relevant modules instead of probing every language and integration.
-format = "$username$hostname$directory$git_branch$git_commit$git_state$git_status$package$nodejs$deno$python$ruby$rust$golang$lua$terraform$docker_context$aws$gcloud$cmd_duration$jobs$status$line_break$character"
+# Keep redraws cheap: no runtime, package, or cloud probes.
+format = "$username$hostname$directory$git_branch$git_state$git_status$cmd_duration$jobs$status$line_break$character"
 command_timeout = 300
 
 [battery]
