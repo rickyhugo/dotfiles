@@ -1,4 +1,28 @@
 # Catppuccin Mocha, with a persistent gitstatus daemon for Git information.
+typeset -gA _native_prompt_palette=(
+	green '#a6e3a1'
+	red '#f38ba8'
+	yellow '#f9e2af'
+	mauve '#cba6f7'
+	blue '#89b4fa'
+	subtext1 '#bac2de'
+	overlay1 '#7f849c'
+)
+typeset -gA _native_prompt_colors=(
+	directory "$_native_prompt_palette[overlay1]"
+	branch "$_native_prompt_palette[mauve]"
+	git_status "$_native_prompt_palette[red]"
+	success "$_native_prompt_palette[green]"
+	error "$_native_prompt_palette[red]"
+	vi_normal "$_native_prompt_palette[subtext1]"
+	vi_visual "$_native_prompt_palette[yellow]"
+	vi_replace "$_native_prompt_palette[mauve]"
+	duration "$_native_prompt_palette[yellow]"
+	jobs "$_native_prompt_palette[blue]"
+	context "$_native_prompt_palette[green]"
+	continuation "$_native_prompt_palette[overlay1]"
+)
+
 autoload -Uz add-zsh-hook
 zmodload zsh/datetime
 
@@ -29,9 +53,9 @@ function _native_prompt_git_render {
 	((VCS_STATUS_COMMITS_BEHIND)) && indicators+=("⇣$VCS_STATUS_COMMITS_BEHIND")
 
 	# Branch names are data: escape prompt directives, and expand via a variable.
-	_native_prompt_git=" on %F{#cba6f7} ${branch//\%/%%}%f"
+	_native_prompt_git=" on %F{$_native_prompt_colors[branch]} ${branch//\%/%%}%f"
 	if (($#indicators)); then
-		_native_prompt_git+=" %F{#f38ba8}[${(j: :)indicators}]%f"
+		_native_prompt_git+=" %F{$_native_prompt_colors[git_status]}[${(j: :)indicators}]%f"
 	fi
 }
 
@@ -71,19 +95,19 @@ function _native_prompt_git_update {
 }
 
 function _native_prompt_mode {
-	local color='#a6e3a1' symbol='❯'
-	((_native_prompt_status)) && color='#f38ba8'
+	local color=$_native_prompt_colors[success] symbol='❯'
+	((_native_prompt_status)) && color=$_native_prompt_colors[error]
 	case ${ZVM_MODE:-${KEYMAP:-viins}} in
 	n | vicmd)
-		color='#bac2de'
+		color=$_native_prompt_colors[vi_normal]
 		symbol='❮'
 		;;
 	v | V | visual | vivis | vivli)
-		color='#f9e2af'
+		color=$_native_prompt_colors[vi_visual]
 		symbol='❮'
 		;;
 	r | R)
-		color='#cba6f7'
+		color=$_native_prompt_colors[vi_replace]
 		symbol='❮'
 		;;
 	esac
@@ -110,7 +134,7 @@ function _native_prompt_precmd {
 			else
 				duration="${elapsed}s"
 			fi
-			_native_prompt_duration=" took %F{#f9e2af}$duration%f"
+			_native_prompt_duration=" took %F{$_native_prompt_colors[duration]}$duration%f"
 		fi
 	fi
 	_native_prompt_git_update
@@ -125,9 +149,9 @@ add-zsh-hook preexec _native_prompt_preexec
 typeset -gaU zvm_after_select_vi_mode_commands
 zvm_after_select_vi_mode_commands+=(_native_prompt_mode)
 
-[[ -n ${SSH_CONNECTION:-} ]] && _native_prompt_context='%F{#a6e3a1}%n@%m%f '
+[[ -n ${SSH_CONNECTION:-} ]] && _native_prompt_context="%F{$_native_prompt_colors[context]}%n@%m%f "
 _native_prompt_mode
 setopt promptsubst
-PROMPT='${_native_prompt_context}%F{#7f849c}%3~%f${_native_prompt_git}${_native_prompt_duration}%(1j. %F{#89b4fa}✦ %j%f.)'$'\n''${_native_prompt_character} '
+PROMPT='${_native_prompt_context}%F{${_native_prompt_colors[directory]}}%3~%f${_native_prompt_git}${_native_prompt_duration}%(1j. %F{${_native_prompt_colors[jobs]}}✦ %j%f.)'$'\n''${_native_prompt_character} '
 RPROMPT=''
-PROMPT2='%F{#7f849c}…%f '
+PROMPT2="%F{$_native_prompt_colors[continuation]}…%f "
