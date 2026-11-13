@@ -1,3 +1,5 @@
+vim.loader.enable()
+
 require("config.set")
 require("config.remap")
 require("config.diagnostics")
@@ -11,11 +13,13 @@ vim.api.nvim_create_autocmd("PackChanged", {
 				vim.cmd.packadd("nvim-treesitter")
 			end
 			vim.cmd("TSUpdate")
-			vim.cmd("TSInstall all")
 		end
 
 		if name == "telescope-fzf-native.nvim" and (kind == "install" or kind == "update") then
-			vim.system({ "make" }, { cwd = ev.data.path }):wait()
+			local result = vim.system({ "make" }, { cwd = ev.data.path }):wait()
+			if result.code ~= 0 then
+				vim.notify("telescope-fzf-native.nvim build failed: " .. result.stderr, vim.log.levels.ERROR)
+			end
 		end
 
 		if name == "peek.nvim" and (kind == "install" or kind == "update") then

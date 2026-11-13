@@ -5,7 +5,7 @@ local conf = require("telescope.config").values
 
 local M = {}
 
-local live_multigrep = function(opts)
+function M.live_multigrep(opts)
 	opts = opts or {}
 	opts.cwd = opts.cwd or vim.uv.cwd()
 
@@ -27,10 +27,13 @@ local live_multigrep = function(opts)
 				table.insert(args, pieces[2])
 			end
 
-			---@diagnostic disable-next-line: deprecated
-			return vim.tbl_flatten({
-				args,
-				{ "--color=never", "--no-heading", "--with-filename", "--line-number", "--column", "--smart-case" },
+			return vim.list_extend(args, {
+				"--color=never",
+				"--no-heading",
+				"--with-filename",
+				"--line-number",
+				"--column",
+				"--smart-case",
 			})
 		end,
 		entry_maker = make_entry.gen_from_vimgrep(opts),
@@ -46,10 +49,6 @@ local live_multigrep = function(opts)
 			sorter = require("telescope.sorters").empty(),
 		})
 		:find()
-end
-
-M.setup = function()
-	vim.keymap.set("n", "<leader>ps", live_multigrep, { desc = "Telescope project-wide multigrep" })
 end
 
 return M

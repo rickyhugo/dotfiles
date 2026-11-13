@@ -8,6 +8,8 @@ vim.pack.add({
 	{ src = "https://github.com/saghen/blink.cmp", version = vim.version.range("1.*") },
 })
 
+require("luasnip.loaders.from_vscode").lazy_load()
+
 require("blink.cmp").setup({
 	snippets = { preset = "luasnip" },
 
@@ -17,8 +19,6 @@ require("blink.cmp").setup({
 			"path",
 			"snippets",
 			"buffer",
-			"cmdline",
-			"omni",
 			"emoji",
 		},
 

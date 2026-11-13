@@ -2,7 +2,7 @@ local icons = require("config.icons")
 
 vim.diagnostic.config({
 	virtual_text = true,
-	underline = { severity_limit = vim.diagnostic.severity.ERROR },
+	underline = { severity = vim.diagnostic.severity.ERROR },
 	signs = {
 		text = {
 			[vim.diagnostic.severity.ERROR] = icons.diagnostic.Error,
@@ -11,7 +11,7 @@ vim.diagnostic.config({
 			[vim.diagnostic.severity.HINT] = icons.diagnostic.Hint,
 		},
 	},
-	update_in_insert = true,
+	update_in_insert = false,
 	severity_sort = true,
 	float = {
 		style = "minimal",

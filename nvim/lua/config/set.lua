@@ -6,7 +6,6 @@ vim.opt.relativenumber = true
 vim.opt.cursorline = true
 vim.opt.cursorcolumn = true
 
-vim.t_Co = 256
 vim.opt.termguicolors = true
 
 vim.opt.clipboard = "unnamedplus"
@@ -17,7 +16,6 @@ vim.opt.title = true
 vim.opt.hlsearch = false
 vim.opt.incsearch = true
 
-vim.opt.showcmd = true
 vim.opt.cmdheight = 1
 vim.opt.laststatus = 2
 vim.opt.shell = "zsh"
@@ -50,7 +48,7 @@ vim.opt.path:append({ "**" }) -- Finding files - Search down into subfolders
 
 vim.opt.colorcolumn = "81"
 
-vim.opt.updatetime = 50
+vim.opt.updatetime = 250
 
 vim.g.mapleader = " "
 

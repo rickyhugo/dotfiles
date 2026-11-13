@@ -19,7 +19,7 @@ require("telescope").setup({
 		},
 	},
 	defaults = {
-		file_ignore_patterns = { ".git/" },
+		file_ignore_patterns = { "%.git/" },
 		mappings = {
 			i = {
 				["<esc>"] = "close", -- close explorer with <esc>
@@ -31,14 +31,23 @@ require("telescope").setup({
 	},
 })
 require("telescope").load_extension("fzf")
-require("config.telescope-multigrep").setup()
-local builtin = require("telescope.builtin")
-vim.keymap.set("n", "<C-p>", builtin.find_files, { desc = "Telescope find files" })
-vim.keymap.set("n", "<leader>fg", builtin.live_grep, { desc = "Telescope live grep" })
-vim.keymap.set("n", "<C-b>", builtin.buffers, { desc = "Telescope buffers" })
-vim.keymap.set("n", "<leader>fh", builtin.help_tags, { desc = "Telescope help tags" })
+vim.keymap.set("n", "<leader>ps", function()
+	require("config.telescope-multigrep").live_multigrep()
+end, { desc = "Telescope project-wide multigrep" })
+vim.keymap.set("n", "<C-p>", function()
+	require("telescope.builtin").find_files()
+end, { desc = "Telescope find files" })
+vim.keymap.set("n", "<leader>fg", function()
+	require("telescope.builtin").live_grep()
+end, { desc = "Telescope live grep" })
+vim.keymap.set("n", "<C-b>", function()
+	require("telescope.builtin").buffers()
+end, { desc = "Telescope buffers" })
+vim.keymap.set("n", "<leader>fh", function()
+	require("telescope.builtin").help_tags()
+end, { desc = "Telescope help tags" })
 vim.keymap.set("n", "<leader>en", function()
-	builtin.find_files({
+	require("telescope.builtin").find_files({
 		cwd = vim.fn.stdpath("config"),
 	})
 end, { desc = "Open neovim config" })

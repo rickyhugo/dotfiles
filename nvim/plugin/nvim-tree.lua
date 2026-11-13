@@ -1,6 +1,8 @@
 vim.pack.add({
 	"https://github.com/nvim-tree/nvim-web-devicons",
 	"https://github.com/nvim-tree/nvim-tree.lua",
+	"https://github.com/nvim-lua/plenary.nvim",
+	"https://github.com/antosha417/nvim-lsp-file-operations",
 })
 
 require("nvim-tree").setup({
@@ -20,4 +22,7 @@ require("nvim-tree").setup({
 		relativenumber = true,
 	},
 })
+-- The integration subscribes only after nvim-tree has been loaded.
+require("lsp-file-operations").setup()
+vim.lsp.config("*", { capabilities = require("lsp-file-operations").default_capabilities() })
 vim.keymap.set("n", "<leader>tt", "<cmd>NvimTreeToggle<cr>", { desc = "Toggle file tree" })
