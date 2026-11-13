@@ -15,12 +15,12 @@
 # profiles at "Needs authentication".
 #
 # This script merges the newest credential for every MCP server into every
-# config dir's keychain item. When the newest access token has expired it asks
+# config dir's keychain item. When the newest access token is near expiry it asks
 # Claude Code to refresh it in the store that owns it, then copies the result
 # everywhere. The claude.ai login itself (claudeAiOauth) is never touched:
 # each profile keeps its own account and organization.
 
-set -u
+set -u -o pipefail
 
 SELF=${0:A}
 LABEL="com.hugo.claude-mcp-auth-keepalive"
@@ -28,7 +28,7 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG="$HOME/Library/Logs/claude-mcp-auth-keepalive.log"
 STATE_DIR="$HOME/.local/state/claude-mcp-auth-keepalive"
 INTERVAL="${CLAUDE_MCP_AUTH_INTERVAL:-120}"  # seconds between passes
-REFRESH_WINDOW=60                           # refresh this many seconds before expiry
+REFRESH_WINDOW=300                          # Claude Code refreshes within five minutes
 
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
@@ -67,6 +67,7 @@ run_python() {
   CLAUDE_MCP_AUTH_STATE="$STATE_DIR" \
   CLAUDE_MCP_AUTH_REFRESH_WINDOW="$REFRESH_WINDOW" \
   "$py" - "$1" <<'PY'
+import fcntl
 import hashlib
 import json
 import os
@@ -77,8 +78,8 @@ import time
 HOME = os.path.expanduser("~")
 STATE = os.environ["CLAUDE_MCP_AUTH_STATE"]
 MODE = sys.argv[1]
-REFRESH_WINDOW = int(os.environ.get("CLAUDE_MCP_AUTH_REFRESH_WINDOW", "60"))
-REFRESH_BACKOFF = 1800  # retry a failed refresh after this many seconds
+REFRESH_WINDOW = int(os.environ.get("CLAUDE_MCP_AUTH_REFRESH_WINDOW", "300"))
+REFRESH_BACKOFF = 120  # retry transient failures on the next scheduled pass
 NOW_MS = int(time.time() * 1000)
 
 
@@ -232,11 +233,24 @@ def refresh(store):
     """Let Claude Code refresh the tokens it owns for this store."""
     try:
         result = run(["claude", "mcp", "list"], cwd=HOME, env=uses_env(store), timeout=120)
-        return result.returncode
+        # `mcp list` exits zero even when a server fails. Retain only known
+        # health labels: raw CLI output can contain URLs or credential data.
+        health = {}
+        for line in result.stdout.splitlines():
+            name = line.split(": ", 1)[0]
+            _, separator, status = line.rpartition(" - ")
+            if not name.startswith("plugin:") or not separator:
+                continue
+            for label in ("Needs authentication", "Failed to connect", "Connection error",
+                          "Disabled", "Connected"):
+                if label in status:
+                    health[name] = label
+                    break
+        return result.returncode, health
     except FileNotFoundError:
-        return 127
+        return 127, {}
     except subprocess.TimeoutExpired:
-        return 124
+        return 124, {}
 
 
 def merge_into(data, best):
@@ -278,11 +292,11 @@ def main():
 
     best, owners = best_records()
 
-    def expired(record):
+    def expired(record, window=REFRESH_WINDOW):
         return bool(
             record
             and record.get("expiresAt")
-            and record["expiresAt"] <= NOW_MS + REFRESH_WINDOW * 1000
+            and record["expiresAt"] <= int(time.time() * 1000) + window * 1000
         )
 
     attempts_path = os.path.join(STATE, "refresh-attempts.json")
@@ -293,8 +307,9 @@ def main():
         attempts = {}
 
     refresh_failed = []
+    write_failed = False
 
-    # Refresh expired access tokens in whichever store owns the newest one.
+    # Refresh expiring access tokens in whichever store owns the newest one.
     if MODE == "sync":
         due = [
             name for name, record in best.items()
@@ -308,22 +323,24 @@ def main():
 
         for label, names in by_owner.items():
             store = next(s for s in stores if s["label"] == label)
-            say(f"refreshing expired token(s) in {label}: {', '.join(n.split('|')[0] for n in names)}")
-            code = refresh(store)
+            say(f"refreshing expiring token(s) in {label}: {', '.join(n.split('|')[0] for n in names)}")
+            code, health = refresh(store)
             fresh = read_creds(store["service"])
             if fresh is not None:
                 creds[label] = fresh
             after = {name: (fresh or {}).get("mcpOAuth", {}).get(name) for name in names}
-            still_stale = [name for name in names if expired(after[name])]
-            if fresh is None or code != 0 or still_stale:
-                refresh_failed.extend(still_stale or names)
-                for name in names:
+            for name in names:
+                record = after[name]
+                server = name.split("|", 1)[0]
+                if not record or not record.get("accessToken") or expired(record, window=0):
+                    refresh_failed.append(name)
                     attempts[name] = NOW_MS
-                detail = f"exit {code}" if code != 0 else "token unchanged"
-                say(f"refresh failed in {label} ({detail}); will retry in {REFRESH_BACKOFF // 60}m")
-            else:
-                for name in names:
+                    detail = f"exit {code}" if code != 0 else health.get(server, "no usable token")
+                    say(f"{server}: refresh failed in {label} ({detail}); will retry in {REFRESH_BACKOFF // 60}m")
+                else:
                     attempts.pop(name, None)
+                    if expired(record):
+                        say(f"{server}: token still valid; checking again next pass")
 
         with open(attempts_path, "w") as handle:
             json.dump(attempts, handle)
@@ -349,6 +366,7 @@ def main():
                 creds[label] = fresh
                 say(f"synced {written} credential(s) into {label}")
             else:
+                write_failed = True
                 say(f"could not write {label} keychain item: {error}")
 
     # Report servers with no credential anywhere. Keys look like
@@ -381,7 +399,7 @@ def main():
                     state = "expired"
                 else:
                     state = f"expires in {max(0, (expires - NOW_MS) // 60000)}m"
-                refresh_state = "refresh ok" if record.get("refreshToken") else "no refresh token"
+                refresh_state = "refresh token present" if record.get("refreshToken") else "no refresh token"
                 servers.append(f"{display} ({state}, {refresh_state})")
             print(f"{store['label']:<10} {'; '.join(servers) if servers else 'no plugin credentials'}")
         if missing:
@@ -393,30 +411,42 @@ def main():
 
     if missing:
         say("needs a one-time sign-in: " + ", ".join(missing))
-    return 0
+    unhealthy = any(
+        not record.get("accessToken") or expired(record, window=0)
+        for record in best.values()
+    )
+    return int(bool(missing or refresh_failed or write_failed or unhealthy))
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # install's RunAtLoad and a manual check can overlap. Serialize refreshes
+    # so two keepalive processes cannot rotate the same refresh token at once.
+    with open(os.path.join(STATE, "lock"), "a") as lock:
+        if MODE == "sync":
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                say("another credential sync is running; skipping")
+                sys.exit(0)
+        sys.exit(main())
 PY
 }
 
 cmd_check() {
   local missing="$STATE_DIR/missing"
   local failed="$STATE_DIR/refresh-failed"
-  : > "$missing"
-  : > "$failed"
+  local code=0
 
   run_python sync | while IFS= read -r line; do
     [[ -n $line ]] && log "$line"
-  done
+  done || code=$?
 
   if [[ -s $failed ]]; then
     local server
     while IFS= read -r server; do
-      log "$server: token refresh failed; retrying in 30m"
+      log "$server: token refresh failed; retrying in 2m"
       cooldown_ok "refresh-${server//[^A-Za-z0-9._-]/_}" &&
-        notify "Claude plugin token refresh failed" "$server — run: claude mcp login $server"
+        notify "Claude plugin token refresh failed" "$server — retrying in 2m; if it persists: claude mcp login $server"
     done < "$failed"
   fi
 
@@ -428,11 +458,12 @@ cmd_check() {
         notify "Claude plugin needs sign-in" "$server — run: claude mcp login $server"
     done < "$missing"
   fi
+  return $code
 }
 
 cmd_status() {
   print "Claude MCP credentials:"
-  run_python status
+  run_python status || return $?
   print
   print -n "agent:       "
   if launchctl print "gui/$UID/$LABEL" >/dev/null 2>&1; then
@@ -469,11 +500,11 @@ cmd_install() {
 EOF
 
   launchctl bootout "gui/$UID/$LABEL" 2>/dev/null
-  launchctl bootstrap "gui/$UID" "$PLIST"
+  launchctl bootstrap "gui/$UID" "$PLIST" || return $?
   print "Installed $PLIST (checks every ${INTERVAL}s). Log: $LOG"
 
   # Seed every profile right away instead of waiting for the first interval.
-  cmd_check
+  cmd_check || return $?
   cmd_status
 }
 
