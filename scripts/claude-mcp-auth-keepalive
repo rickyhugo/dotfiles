@@ -5,6 +5,7 @@
 #
 #   claude-mcp-auth-keepalive check      one pass (what launchd runs)
 #   claude-mcp-auth-keepalive status     show credential health and agent state
+#   claude-mcp-auth-keepalive lapsed     list servers that need a new sign-in
 #   claude-mcp-auth-keepalive install    install and start the LaunchAgent
 #   claude-mcp-auth-keepalive uninstall  stop and remove the LaunchAgent
 #
@@ -19,6 +20,9 @@
 # Claude Code to refresh it in the store that owns it, then copies the result
 # everywhere. The claude.ai login itself (claudeAiOauth) is never touched:
 # each profile keeps its own account and organization.
+#
+# A token that ran out and cannot be refreshed needs a browser sign-in. This
+# script only reports those (`lapsed`); auth-keepalive opens the sign-in.
 
 set -u -o pipefail
 
@@ -380,6 +384,20 @@ def main():
     with open(os.path.join(STATE, "missing"), "w") as handle:
         handle.write("".join(f"{name}\n" for name in missing))
 
+    if MODE == "lapsed":
+        # Expired, and either there is no refresh token or the last refresh
+        # (recorded by the sync pass) was refused.
+        try:
+            with open(os.path.join(STATE, "refresh-failed")) as handle:
+                refused = set(handle.read().split())
+        except OSError:
+            refused = set()
+        for name, record in sorted(best.items()):
+            server = name.split("|", 1)[0]
+            if expired(record, window=0) and (not record.get("refreshToken") or server in refused):
+                print(server)
+        return 0
+
     if MODE == "status":
         print()
         for store in stores:
@@ -517,7 +535,8 @@ cmd_uninstall() {
 case "${1:-}" in
   check) cmd_check ;;
   status) cmd_status ;;
+  lapsed) run_python lapsed ;;
   install) cmd_install ;;
   uninstall) cmd_uninstall ;;
-  *) print -u2 "usage: ${0:t} check|status|install|uninstall"; exit 64 ;;
+  *) print -u2 "usage: ${0:t} check|status|lapsed|install|uninstall"; exit 64 ;;
 esac

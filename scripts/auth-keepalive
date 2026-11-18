@@ -1,6 +1,6 @@
 #!/bin/zsh
-# auth-keepalive: keep the gh and gcloud CLIs and opencode's MCP servers
-# logged in, run by launchd.
+# auth-keepalive: keep the gh and gcloud CLIs and the MCP servers of Claude
+# Code, codex and opencode logged in, run by launchd.
 #
 #   auth-keepalive check      one pass (what launchd runs every few minutes)
 #   auth-keepalive install    install and start the LaunchAgent
@@ -14,10 +14,11 @@
 # way. gh uses a non-expiring token, so it only gets a notification if it
 # ever stops working.
 #
-# opencode keeps one credential store and its background server refreshes the
-# MCP tokens that have a refresh token. A server whose login lapsed without one
-# stays at "needs_auth" until someone signs in again, so that gets the same
-# browser login. Servers never signed in to are left alone; `status` lists them.
+# Each agent harness refreshes the MCP tokens that have a refresh token (for
+# Claude Code that is claude-mcp-auth-keepalive, which also copies them to
+# every profile). A login that lapses without one stays broken until someone
+# signs in again, so that gets the same browser login. Servers never signed in
+# to are left alone; `status` lists them.
 
 set -u
 
@@ -30,6 +31,9 @@ INTERVAL="${AUTH_KEEPALIVE_INTERVAL:-300}"     # seconds between checks
 IDLE_LIMIT="${AUTH_KEEPALIVE_IDLE_LIMIT:-300}"  # only pop a login if active this recently
 LOGIN_TIMEOUT=600                               # give up on an unanswered login after this
 NOTIFY_COOLDOWN=3600                            # repeat a "fix this by hand" notice at most hourly
+# codex only learns a server's state by connecting to it, and Atlas allows 200
+# requests an hour, so ask codex this often and reuse the answer in between.
+MCP_PROBE_INTERVAL=3600
 
 export PATH="$HOME/.local/bin:$HOME/.opencode/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 # Our checks run every few minutes; keep them out of ~/.config/gcloud/logs.
@@ -218,18 +222,104 @@ sys.exit(login(*sys.argv[2:4]))
 PY
 }
 
-check_opencode_mcp() {
-  command -v opencode >/dev/null || return 0
-  local line server id state name
-  for line in "${(@f)$(opencode_mcp list)}"; do
+# Print "name<TAB>name<TAB>lapsed|new" for every codex MCP server that rejects
+# its credential. codex keeps the tokens in keychain items only it can read, so
+# start an app server and read the connection error it reports for each server.
+codex_mcp() {
+  python3 - <<'PY'
+import json
+import re
+import select
+import subprocess
+import time
+
+server = subprocess.Popen(["codex", "app-server"], stdin=subprocess.PIPE,
+                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+
+
+def send(message):
+    server.stdin.write(json.dumps(message) + "\n")
+    server.stdin.flush()
+
+
+def result_of(request_id, timeout):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not select.select([server.stdout], [], [], 1)[0]:
+            continue
+        line = server.stdout.readline()
+        if not line:
+            return None
+        try:
+            message = json.loads(line)
+        except ValueError:
+            continue
+        if message.get("id") == request_id:
+            return message.get("result")
+    return None
+
+
+try:
+    send({"id": 1, "method": "initialize",
+          "params": {"clientInfo": {"name": "auth-keepalive", "version": "1"}}})
+    if result_of(1, 20) is not None:
+        send({"method": "initialized"})
+        send({"id": 2, "method": "mcpServerStatus/list", "params": {}})
+        for status in (result_of(2, 90) or {}).get("data") or []:
+            # A network failure also sets toolsError; only a refusal counts.
+            if not re.search(r"HTTP 401|[Uu]nauthorized|invalid_token|[Rr]eauth", status.get("toolsError") or ""):
+                continue
+            # A stored token means the login worked once and has lapsed.
+            state = "lapsed" if status.get("authStatus") == "oAuth" else "new"
+            print(f"{status['name']}\t{status['name']}\t{state}")
+finally:
+    server.terminate()
+PY
+}
+
+# Print "name<TAB>id<TAB>lapsed|new" for every MCP server of the given harness
+# that needs a sign-in. Lapsed means a login that worked has run out.
+mcp_needs_auth() {
+  case $1 in
+    opencode) opencode_mcp list ;;
+    codex)
+      local cache="$STATE_DIR/codex-mcp.list"
+      if [[ ${2:-} == fresh || ! -f $cache ]] ||
+         (( $(date +%s) - $(stat -f %m "$cache") >= MCP_PROBE_INTERVAL )); then
+        codex_mcp > "$cache"
+      fi
+      print -rn -- "$(<$cache)" ;;
+    # The keychain has the expiry, so this costs no request to any server.
+    claude) "${SELF:h}/claude-mcp-auth-keepalive" lapsed | awk '{ printf "%s\t%s\tlapsed\n", $0, $0 }' ;;
+  esac
+}
+
+# Browser login for one server; returns once it completes. exec, so the
+# timeout in run_login stops the harness and not a shell that wraps it.
+mcp_login() {
+  local harness=$1 id=$2 server=$3
+  case $harness in
+    opencode) opencode_mcp login "$id" "$server" ;;
+    codex) exec codex mcp login "$server" </dev/null >/dev/null 2>&1 ;;
+    # claude gives up at once without a terminal, so lend it one. Any profile
+    # will do: claude-mcp-auth-keepalive copies the new token to the others.
+    claude) exec script -q /dev/null claude mcp login "$server" </dev/null >/dev/null 2>&1 ;;
+  esac
+}
+
+check_mcp() {
+  local harness=$1 line server id state name
+  command -v "$harness" >/dev/null || return 0
+  for line in "${(@f)$(mcp_needs_auth "$harness")}"; do
     IFS=$'\t' read -r server id state <<< "$line"
     [[ $state == lapsed ]] || continue
-    name="opencode-${server//[^A-Za-z0-9._-]/_}"
+    name="$harness-${server//[^A-Za-z0-9._-]/_}"
     if ! user_is_present; then
       log "$name: login expired, waiting for you to be at the keyboard"
     # An ignored browser tab should not come back on every pass.
     elif cooldown_ok "$name"; then
-      run_login "$name" opencode_mcp login "$id" "$server"
+      # Ask codex again after a login instead of trusting the stale answer.
+      run_login "$name" mcp_login "$harness" "$id" "$server" && rm -f "$STATE_DIR/$harness-mcp.list"
     fi
   done
 }
@@ -240,25 +330,30 @@ cmd_check() {
   fi
   check_gh
   check_gcloud
-  check_opencode_mcp
+  local harness
+  for harness in claude codex opencode; do
+    check_mcp "$harness"
+  done
 }
 
 cmd_status() {
   local gh; gh=$(gh_bin)
-  print -n "gh:          "; "$gh" auth status --hostname github.com >/dev/null 2>&1 && print ok || print "needs login"
-  print -n "gcloud user: "; gcloud_probe auth print-access-token 2>/dev/null && print ok || print "needs login"
-  print -n "gcloud ADC:  "; gcloud_probe auth application-default print-access-token 2>/dev/null && print ok || print "needs login"
-  if command -v opencode >/dev/null; then
-    local line server id state pending=()
-    for line in "${(@f)$(opencode_mcp list)}"; do
+  print -n "gh:           "; "$gh" auth status --hostname github.com >/dev/null 2>&1 && print ok || print "needs login"
+  print -n "gcloud user:  "; gcloud_probe auth print-access-token 2>/dev/null && print ok || print "needs login"
+  print -n "gcloud ADC:   "; gcloud_probe auth application-default print-access-token 2>/dev/null && print ok || print "needs login"
+  local harness line server id state pending
+  for harness in claude codex opencode; do
+    command -v "$harness" >/dev/null || continue
+    pending=()
+    for line in "${(@f)$(mcp_needs_auth "$harness" fresh)}"; do
       IFS=$'\t' read -r server id state <<< "$line"
       [[ -n $server ]] || continue
       [[ $state == lapsed ]] && pending+=("$server (expired)") || pending+=("$server (never signed in)")
     done
-    print -n "opencode mcp:"; (( $#pending )) && print " needs login: ${(j:, :)pending}" || print " ok"
-  fi
-  print -n "agent:       "; launchctl print "gui/$UID/$LABEL" >/dev/null 2>&1 && print "loaded ($PLIST)" || print "not loaded"
-  print    "log:         $LOG"
+    print -n "${(r:14:)${:-$harness mcp:}}"; (( $#pending )) && print "needs login: ${(j:, :)pending}" || print ok
+  done
+  print -n "agent:        "; launchctl print "gui/$UID/$LABEL" >/dev/null 2>&1 && print "loaded ($PLIST)" || print "not loaded"
+  print    "log:          $LOG"
 }
 
 cmd_install() {
