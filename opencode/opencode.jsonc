@@ -3,8 +3,9 @@
   "shell": "/bin/zsh",
   "update": "notify",
   "formatter": true,
-  "experimental": {
-    "background_compaction": true,
+  "compaction": {
+    "auto": true,
+    "background": true,
   },
   "mcp": {
     "servers": {
