@@ -1,5 +1,6 @@
 #!/bin/zsh
-# auth-keepalive: keep the gh and gcloud CLIs logged in, run by launchd.
+# auth-keepalive: keep the gh and gcloud CLIs and opencode's MCP servers
+# logged in, run by launchd.
 #
 #   auth-keepalive check      one pass (what launchd runs every few minutes)
 #   auth-keepalive install    install and start the LaunchAgent
@@ -12,6 +13,11 @@
 # anything else trips over it. ADC (application-default) is checked the same
 # way. gh uses a non-expiring token, so it only gets a notification if it
 # ever stops working.
+#
+# opencode keeps one credential store and its background server refreshes the
+# MCP tokens that have a refresh token. A server whose login lapsed without one
+# stays at "needs_auth" until someone signs in again, so that gets the same
+# browser login. Servers never signed in to are left alone; `status` lists them.
 
 set -u
 
@@ -25,7 +31,7 @@ IDLE_LIMIT="${AUTH_KEEPALIVE_IDLE_LIMIT:-300}"  # only pop a login if active thi
 LOGIN_TIMEOUT=600                               # give up on an unanswered login after this
 NOTIFY_COOLDOWN=3600                            # repeat a "fix this by hand" notice at most hourly
 
-export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="$HOME/.local/bin:$HOME/.opencode/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 # Our checks run every few minutes; keep them out of ~/.config/gcloud/logs.
 export CLOUDSDK_CORE_DISABLE_FILE_LOGGING=1
 
@@ -139,12 +145,102 @@ check_gh() {
   cooldown_ok gh && notify "GitHub CLI" "Token no longer works — run: gh auth login"
 }
 
+# Talk to the running opencode server.
+#   opencode_mcp list                  print "name<TAB>integrationID<TAB>lapsed|new"
+#                                      for every MCP server at needs_auth
+#   opencode_mcp login <id> <name>     browser login; returns once it completes
+opencode_mcp() {
+  python3 - "$@" <<'PY'
+import json
+import subprocess
+import sys
+import time
+
+
+def api(*args, data=None):
+    """Response data, or None on any failure (server down, HTTP error)."""
+    argv = ["opencode", "api", *args]
+    if data is not None:
+        argv += ["-d", json.dumps(data)]
+    try:
+        result = subprocess.run(argv, capture_output=True, text=True,
+                                stdin=subprocess.DEVNULL, timeout=30)
+        body = json.loads(result.stdout)
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+    return body.get("data") if isinstance(body, dict) else None
+
+
+def list_needs_auth():
+    for server in api("GET", "/api/mcp") or []:
+        ident = server.get("integrationID")
+        if not ident or (server.get("status") or {}).get("status") != "needs_auth":
+            continue
+        integration = api("GET", f"/api/integration/{ident}")
+        if integration is None:
+            continue
+        # A stored credential means the login worked once and has lapsed.
+        state = "lapsed" if integration.get("connections") else "new"
+        print(f"{server['name']}\t{ident}\t{state}")
+    return 0
+
+
+def login(ident, name):
+    integration = api("GET", f"/api/integration/{ident}") or {}
+    method = next((m["id"] for m in integration.get("methods") or []
+                   if m.get("type") == "oauth"), None)
+    base = f"/api/integration/{ident}/connect/oauth"
+    attempt = api("POST", base, data={"methodID": method}) if method else None
+    # "code" mode wants a code pasted back, which nobody is here to do.
+    if not attempt or attempt.get("mode") != "auto":
+        if attempt:
+            api("DELETE", f"{base}/{attempt['attemptID']}")
+        print(f"opencode-{name}: could not start a browser login")
+        return 1
+
+    path = f"{base}/{attempt['attemptID']}"
+    subprocess.run(["open", attempt["url"]])
+    while time.time() * 1000 < attempt["time"]["expires"]:
+        time.sleep(3)
+        status = (api("GET", path) or {}).get("status")
+        if status == "complete":
+            api("POST", f"/api/experimental/mcp/{name}/connect")
+            return 0
+        if status in ("failed", "expired"):
+            return 1
+    api("DELETE", path)
+    return 1
+
+
+if sys.argv[1] == "list":
+    sys.exit(list_needs_auth())
+sys.exit(login(*sys.argv[2:4]))
+PY
+}
+
+check_opencode_mcp() {
+  command -v opencode >/dev/null || return 0
+  local line server id state name
+  for line in "${(@f)$(opencode_mcp list)}"; do
+    IFS=$'\t' read -r server id state <<< "$line"
+    [[ $state == lapsed ]] || continue
+    name="opencode-${server//[^A-Za-z0-9._-]/_}"
+    if ! user_is_present; then
+      log "$name: login expired, waiting for you to be at the keyboard"
+    # An ignored browser tab should not come back on every pass.
+    elif cooldown_ok "$name"; then
+      run_login "$name" opencode_mcp login "$id" "$server"
+    fi
+  done
+}
+
 cmd_check() {
   if ! online; then
     return 0
   fi
   check_gh
   check_gcloud
+  check_opencode_mcp
 }
 
 cmd_status() {
@@ -152,6 +248,15 @@ cmd_status() {
   print -n "gh:          "; "$gh" auth status --hostname github.com >/dev/null 2>&1 && print ok || print "needs login"
   print -n "gcloud user: "; gcloud_probe auth print-access-token 2>/dev/null && print ok || print "needs login"
   print -n "gcloud ADC:  "; gcloud_probe auth application-default print-access-token 2>/dev/null && print ok || print "needs login"
+  if command -v opencode >/dev/null; then
+    local line server id state pending=()
+    for line in "${(@f)$(opencode_mcp list)}"; do
+      IFS=$'\t' read -r server id state <<< "$line"
+      [[ -n $server ]] || continue
+      [[ $state == lapsed ]] && pending+=("$server (expired)") || pending+=("$server (never signed in)")
+    done
+    print -n "opencode mcp:"; (( $#pending )) && print " needs login: ${(j:, :)pending}" || print " ok"
+  fi
   print -n "agent:       "; launchctl print "gui/$UID/$LABEL" >/dev/null 2>&1 && print "loaded ($PLIST)" || print "not loaded"
   print    "log:         $LOG"
 }
