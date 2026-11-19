@@ -12,6 +12,7 @@
       "browse": {
         "type": "local",
         "command": ["browse", "mcp"],
+        "pool": true,
         "environment": {
           "OPENCODE_BROWSER_RUNTIME": "auto-update",
         },
