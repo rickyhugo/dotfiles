@@ -24,16 +24,17 @@ or test suites are kept.
 
 Mise links their skills into `~/.agents/skills/` with `pstack-`, `cursor-`, and
 `tstack-` prefixes. Matt Pocock's skills still come from a mise-managed checkout
-under `~/.external-skills/`, using `mp-`. Claude Code, Codex, and OpenCode share
-the directory. Deployment entries live in `~/.config/mise/config.toml`.
+under `~/.external-skills/`, using `mp-`. Claude Code, Codex, OpenCode, and
+Antigravity CLI share the directory. Deployment entries live in `~/.config/mise/config.toml`.
 
 [`agents/`](agents) holds the rest, deployed by `mise dot apply`:
 
 - `AGENTS.md`: global instructions for every harness, linked as `~/.claude/CLAUDE.md`,
-  `~/.codex/AGENTS.md`, and `~/.config/opencode/AGENTS.md`.
+  `~/.codex/AGENTS.md`, `~/.config/opencode/AGENTS.md`, and
+  `~/.gemini/config/AGENTS.md`.
 - `pstack/AGENTS.md` and `pstack/harnesses/`: shared execution rules and external
   harness adapters. Team Kit and tstack reuse it through their own `AGENTS.md`.
-- `claude/`, `codex/`, `opencode/`: helper agents such as `poteto-agent`, one
+- `claude/`, `codex/`, `opencode/`, `antigravity/`: helper agents such as `poteto-agent`, one
   file per host.
 - `skills/`: my own skills
 
