@@ -9,8 +9,9 @@ description: Configure pstack's models and reasoning settings by use case, with 
 
 Read the [configuration format](../../docs/configuration.md), bundled role
 defaults, and existing shared and machine-local files. Show the effective role
-table, including inherited choices and missing mappings. Read files directly;
-setup needs no generated rules or config program.
+table, including inherited choices and missing mappings. Report any role in a
+user file that the bundled defaults do not define as retired, and offer to drop
+it. Read files directly; setup needs no generated rules or config program.
 
 ## 2. Choose the scope and models
 
@@ -20,8 +21,11 @@ file. Preserve unrelated profiles, targets, roles, and options.
 Ask which use cases to configure and the user's cost/latency preference. Offer
 confirmed models alongside `inherit`. Reasoning and speed are explicit settings,
 not suffixes inferred from a generic budget. Confirm availability and model
-selection support before proposing choices. List roles preserve order and count;
-repeated profiles are separate attempts. The judge pool may be empty.
+selection support before proposing choices. Do not propose a reasoning level
+above xhigh unless the user asks for it. List roles preserve order and count;
+repeated profiles are separate attempts. The judge pool may be empty. Give models
+from one vendor the same `family`, so a cross-family judge really comes from
+another vendor. A diverse panel uses seats from distinct families.
 
 ## 3. Confirm and save
 

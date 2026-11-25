@@ -3,7 +3,7 @@
 - Repository: https://github.com/cursor/plugins
 - Subdirectory: `cursor-team-kit/`
 - Upstream baseline: `2776ddd2355d6d6c8747d3964600f28daf62f049`
-- Last reviewed upstream commit: `2776ddd2355d6d6c8747d3964600f28daf62f049`
+- Last reviewed upstream commit: `41e400932eca14f289e7db717a70455256b6d388`
 - Imported into dotfiles: 2026-11-11.
 - License: MIT; see [LICENSE](LICENSE).
 

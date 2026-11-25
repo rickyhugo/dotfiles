@@ -47,7 +47,7 @@ See [configuration](../../docs/configuration.md) for role choices and machine-lo
 
 ## Start a task with `/poteto-mode`
 
-`/poteto-mode` matches the task to a playbook, copies the playbook's steps into the todo list, and runs the other skills as the steps need them. A step it skips stays in the list as `skip: <reason>`. A good prompt states the goal and how to tell it's done. It doesn't list skills, because a hand-written sequence tends to drop or reorder steps the playbook would keep. Read [`references/prompting.md`](references/prompting.md) before you help word one. [Guide page 2](../../docs/guide/02-poteto-mode.md) has examples.
+`/poteto-mode` matches the task to a playbook, copies the playbook's steps into the todo list, and runs the other skills as the steps need them. A good prompt states the goal and how to tell it's done. It doesn't list skills, because a hand-written sequence tends to drop or reorder steps the playbook would keep. Read [`references/prompting.md`](references/prompting.md) before you help word one. [Guide page 2](../../docs/guide/02-poteto-mode.md) has examples.
 
 Start each new task with `/poteto-mode`. Mid-chat, "new task" matches a fresh
 playbook. The bundled poteto-agent role gives delegates the same working style.
@@ -61,6 +61,7 @@ The default answer is `/poteto-mode`, which runs most of the others when its ste
 | Do any non-trivial task with rigor                                                                                                                                                                   | [`/poteto-mode`](../poteto-mode/SKILL.md)                                               |
 | Check that the agent understood their goal and the problem before it starts                                                                                                                          | [`/in-your-own-words`](../in-your-own-words/SKILL.md)                                   |
 | Get a prompt rewritten deeper, not bigger, before sending it: what a top professional would add, their raw material and methods, and an outside check. It returns the prompt and doesn't do the task | [`/sharpen`](../sharpen/SKILL.md)                                                       |
+| Learn the expert words for what they're building, including words borrowed from neighboring fields, with every cited source checked, and get their description rewritten with them                   | [`/reframe`](../reframe/SKILL.md)                                                       |
 | Know how code works now, or where new code should live                                                                                                                                               | [`/how`](../how/SKILL.md)                                                               |
 | Know why code is shaped this way, or where a number came from                                                                                                                                        | [`/why`](../why/SKILL.md)                                                               |
 | Understand a change or subsystem, explained plainly                                                                                                                                                  | [`/teach`](../teach/SKILL.md)                                                           |
@@ -86,7 +87,7 @@ The default answer is `/poteto-mode`, which runs most of the others when its ste
 | Vet a performance number before reporting or acting on it                                                                                                                                            | [`/benchmark-checklist`](../benchmark-checklist/SKILL.md)                               |
 | Run a large or cross-cutting change, or one to review after stepping away                                                                                                                            | [`/figure-it-out`](../figure-it-out/SKILL.md)                                           |
 | Keep a decision log during a run, and review it afterward                                                                                                                                            | [`/show-me-your-work`](../show-me-your-work/SKILL.md)                                   |
-| Pick a model for each role and a reasoning budget                                                                                                                                                    | [`/setup-pstack`](../setup-pstack/SKILL.md)                                             |
+| Pick a model and reasoning level for each role                                                                                                                                                       | [`/setup-pstack`](../setup-pstack/SKILL.md)                                             |
 | Turn their own working habits into a personal mode skill                                                                                                                                             | [`/automate-me`](../automate-me/SKILL.md)                                               |
 | Turn what a finished task taught into skill edits                                                                                                                                                    | [`/reflect`](../reflect/SKILL.md)                                                       |
 | Stop agents from repeating the same mistakes in this repo                                                                                                                                            | [`/correct`](../correct/SKILL.md)                                                       |
@@ -99,16 +100,15 @@ Close calls:
 
 - `/how` explains what the code does. `/why` explains the reasons. `/teach` runs one or both and explains the result plainly.
 - `/arena` gives every worker the same brief and merges the best parts. `/swarm` splits work into slices or a race and returns one report.
-- `/architect` implements right after it settles the design. Add "with checkpoint" to review the design before it writes code.
 - `/interrogate` reviews the diff. `/blast-radius` looks for breakage outside the diff and proves the one fact that makes the change safe.
 - `/recall` rebuilds context across recent chats. `/ketchup` covers only this chat since the user's last message. Resuming one specific chat or branch is the Session pickup playbook.
-- `/figure-it-out` designs one rigorous run. The Orchestrate playbook runs a program that spans days and many PRs. The Autonomous run playbook drives one task to a finish condition.
+- `/figure-it-out` designs one rigorous run. The Autonomous run playbook drives one task to a finish condition.
 
 Not in pstack:
 
 - `/deslop`, `control-cli`, and `control-ui` ship in the `cursor-team-kit` plugin.
 - `/loop` and `/create-skill` are Cursor built-ins.
-- pstack has no `/orchestrate` skill. Orchestrate is a `/poteto-mode` playbook. If the slash menu shows `/orchestrate`, another plugin provides it.
+- pstack has no `/orchestrate` skill. If the slash menu shows `/orchestrate`, another plugin provides it.
 
 ## Playbooks and principles
 
@@ -121,7 +121,7 @@ Playbooks are step lists inside `/poteto-mode`, not skills, so they have no slas
 - "full autopilot on this queue" runs Autopilot-full. "autopilot, don't merge" runs Autopilot-stack.
 - "run the eval playbook" runs Eval.
 
-Without `/poteto-mode`, a phrase such as "babysit this pr" can start Cursor's own skill for the same job instead. The Playbooks section of [`poteto-mode`](../poteto-mode/SKILL.md) lists every playbook and when it applies. [Guide page 6](../../docs/guide/06-verify-and-ship.md) covers opening, babysitting, and landing a PR.
+Without `/poteto-mode`, a phrase such as "babysit this pr" can start Cursor's own skill for the same job instead. The Playbooks section of [`poteto-mode`](../poteto-mode/SKILL.md) lists every playbook. [Guide page 6](../../docs/guide/06-verify-and-ship.md) covers opening, babysitting, and landing a PR.
 
 pstack has no planning skill. Cursor's Plan Mode works alongside it. For work that spans phases or stacked PRs, asking `/poteto-mode` for a plan runs the [Multi-phase plan playbook](../poteto-mode/playbooks/multi-phase-plan.md), which writes the plan and doesn't implement it. For a design question, the Prototype playbook or `/architect` settles it in code first.
 

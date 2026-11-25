@@ -20,7 +20,7 @@ Run:
 
 [`/setup-pstack`](../../skills/setup-pstack/SKILL.md) shows current roles and the active harness's supported model controls. Choose models for your use cases and exact native reasoning options where supported. Save shared defaults in XDG `pstack/config.json`, or this machine's overrides in `pstack/config.local.json`.
 
-Defaults inherit the session model. No vendor model or reasoning tier is assumed. Named profiles carry explicit native targets per harness; a harness with no target inherits and reports that gap. A harness without per-call model control can run the workflow but cannot honor independent model routing.
+Defaults inherit the session model. No vendor model or reasoning tier is assumed. Named profiles carry explicit native targets per harness; a harness with no target inherits and reports that gap. A harness without per-call model control can run the workflow but cannot honor independent model routing. Setup does not propose a reasoning level above `xhigh` unless you ask. A model you configure only for a panel seat runs another role only when you name it for a task, or after two runs of the same brief on the role's own model fail their check.
 
 Override only the roles you care about. Roles merge by key, lists replace, and each named model profile replaces the whole lower-precedence profile. Setup preserves unrelated choices. Removing an override restores the lower-precedence value. Read [configuration](../configuration.md) for the format and examples. The agent reads and checks the JSON directly.
 
@@ -55,7 +55,7 @@ Pick something real but small, and describe it the way you'd describe it to a co
 /poteto-mode add a --json flag to this command. text output stays byte-identical. verify both.
 ```
 
-Watch the todo list. Its first items are the matched playbook's steps copied in, the Feature playbook for this prompt. If `/poteto-mode` skips a step, the step stays in the list with `skip: <reason>`, so you can see what it chose not to do.
+Watch the todo list. Its first items are the matched playbook's steps copied in, the Feature playbook for this prompt.
 
 From here you can type normal follow-ups. To keep `/poteto-mode` on for the whole chat, pick it from the `/` menu with Option+Enter (Mac) or Alt+Enter (Windows) instead of Enter. That makes it a [Custom Mode](https://cursor.com/docs/skills#using-a-skill-as-a-custom-mode), which stays in context on every turn until you exit it. Custom Modes are available in the Agents Window and the CLI. Plain Enter attaches the skill to one message, and it fades as the chat moves on.
 
