@@ -1,6 +1,6 @@
 #!/bin/zsh
 # auth-keepalive: keep the gh and gcloud CLIs and the MCP servers of Claude
-# Code, codex and opencode logged in, run by launchd.
+# Code, codex, opencode and Antigravity CLI (agy) logged in, run by launchd.
 #
 #   auth-keepalive check      one pass (what launchd runs every few minutes)
 #   auth-keepalive install    install and start the LaunchAgent
@@ -277,6 +277,111 @@ finally:
 PY
 }
 
+# Antigravity CLI (agy) MCP servers, read from its config and token files.
+#   agy_mcp list          print "name<TAB>id<TAB>lapsed|new" for every server
+#                         that needs a sign-in; id is "manual" when only agy's
+#                         own /mcp screen can sign in to it
+#   agy_mcp argv <name>   NUL-separated command that signs in to an
+#                         mcp-remote server; nothing for other servers
+# agy signs in to remote servers itself, but only from its /mcp screen, and
+# only to servers that answer 401 with a WWW-Authenticate challenge. The Anyfin
+# servers do not, so they run through the mcp-remote bridge, which keeps its
+# tokens in ~/.mcp-auth and has a client that signs in without agy.
+agy_mcp() {
+  python3 - "$@" <<'PY'
+import hashlib
+import json
+import os
+import re
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+HOME = Path.home()
+CONFIG = HOME / ".gemini/config/mcp_config.json"
+AGY_TOKENS = HOME / ".gemini/antigravity-cli/mcp_oauth_tokens.json"
+REMOTE_DIR = Path(os.environ.get("MCP_REMOTE_CONFIG_DIR", HOME / ".mcp-auth")) / "mcp-remote-v1"
+
+
+def read_json(path):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def mcp_remote(server):
+    """(command, package spec, url) when the server runs mcp-remote, else None."""
+    args = server.get("args") or []
+    for i, arg in enumerate(args):
+        if arg.split("@")[0] == "mcp-remote" and i + 1 < len(args):
+            return server.get("command"), arg, args[i + 1]
+    return None
+
+
+def parse_expiry(text):
+    """Seconds since the epoch for agy's Go timestamps, whose fraction has
+    up to nine digits; Python's parser wants three or six."""
+    head, frac, zone = re.match(r"([^.]+?)(?:\.(\d+))?(Z|[+-]\d\d:\d\d)$", text).groups()
+    zone = "+00:00" if zone == "Z" else zone
+    return datetime.fromisoformat(f"{head}.{(frac or '').ljust(6, '0')[:6]}{zone}").timestamp()
+
+
+def state(token, expires_at):
+    """None when usable, "lapsed" when it ran out without a refresh token."""
+    if token.get("refresh_token") or expires_at is None or expires_at > time.time():
+        return None
+    return "lapsed"
+
+
+def needs_auth():
+    agy_tokens = read_json(AGY_TOKENS)
+    for name, server in (read_json(CONFIG).get("mcpServers") or {}).items():
+        if server.get("disabled"):
+            continue
+        if url := server.get("url") or server.get("serverUrl"):
+            entry = agy_tokens.get(url)
+            if not entry:
+                yield name, "manual", "new"
+                continue
+            token = entry.get("token") or {}
+            expiry = token.get("expiry")
+            expires_at = parse_expiry(expiry) if expiry else None
+            if found := state(token, expires_at):
+                yield name, "manual", found
+        elif remote := mcp_remote(server):
+            # mcp-remote names the file after an md5 of the URL; extra flags
+            # such as --header change the hash and are not handled here.
+            digest = hashlib.md5(remote[2].encode()).hexdigest()
+            token = read_json(REMOTE_DIR / f"{digest}_tokens.json")
+            if not token:
+                yield name, name, "new"
+                continue
+            expires_at = token.get("expires_at")
+            if found := state(token, expires_at / 1000 if expires_at else None):
+                yield name, name, found
+
+
+def login_argv(name):
+    server = (read_json(CONFIG).get("mcpServers") or {}).get(name) or {}
+    remote = mcp_remote(server)
+    if not remote or not remote[0]:
+        return 1
+    command, spec, url = remote
+    # mcp-remote-client signs in, lists the tools and exits.
+    print("\0".join([command, "-y", "-p", spec, "mcp-remote-client", url]), end="")
+    return 0
+
+
+if sys.argv[1] == "list":
+    for row in needs_auth():
+        print("\t".join(row))
+    sys.exit(0)
+sys.exit(login_argv(sys.argv[2]))
+PY
+}
+
 # Print "name<TAB>id<TAB>lapsed|new" for every MCP server of the given harness
 # that needs a sign-in. Lapsed means a login that worked has run out.
 mcp_needs_auth() {
@@ -291,6 +396,8 @@ mcp_needs_auth() {
       print -rn -- "$(<$cache)" ;;
     # The keychain has the expiry, so this costs no request to any server.
     claude) "${SELF:h}/claude-mcp-auth-keepalive" lapsed | awk '{ printf "%s\t%s\tlapsed\n", $0, $0 }' ;;
+    # Token files only, so this costs no request to any server either.
+    agy) agy_mcp list ;;
   esac
 }
 
@@ -304,6 +411,10 @@ mcp_login() {
     # claude gives up at once without a terminal, so lend it one. Any profile
     # will do: claude-mcp-auth-keepalive copies the new token to the others.
     claude) exec script -q /dev/null claude mcp login "$server" </dev/null >/dev/null 2>&1 ;;
+    agy)
+      local -a argv=("${(@0)$(agy_mcp argv "$server")}")
+      [[ -n ${argv[1]} ]] || return 1
+      exec "${argv[@]}" </dev/null >/dev/null 2>&1 ;;
   esac
 }
 
@@ -314,7 +425,10 @@ check_mcp() {
     IFS=$'\t' read -r server id state <<< "$line"
     [[ $state == lapsed ]] || continue
     name="$harness-${server//[^A-Za-z0-9._-]/_}"
-    if ! user_is_present; then
+    if [[ $id == manual ]]; then
+      log "$name: login expired, only agy's /mcp screen can sign in again"
+      cooldown_ok "$name" && notify "$name" "Login expired — run agy, then /mcp, and sign in to $server."
+    elif ! user_is_present; then
       log "$name: login expired, waiting for you to be at the keyboard"
     # An ignored browser tab should not come back on every pass.
     elif cooldown_ok "$name"; then
@@ -331,7 +445,7 @@ cmd_check() {
   check_gh
   check_gcloud
   local harness
-  for harness in claude codex opencode; do
+  for harness in claude codex opencode agy; do
     check_mcp "$harness"
   done
 }
@@ -342,7 +456,7 @@ cmd_status() {
   print -n "gcloud user:  "; gcloud_probe auth print-access-token 2>/dev/null && print ok || print "needs login"
   print -n "gcloud ADC:   "; gcloud_probe auth application-default print-access-token 2>/dev/null && print ok || print "needs login"
   local harness line server id state pending
-  for harness in claude codex opencode; do
+  for harness in claude codex opencode agy; do
     command -v "$harness" >/dev/null || continue
     pending=()
     for line in "${(@f)$(mcp_needs_auth "$harness" fresh)}"; do
