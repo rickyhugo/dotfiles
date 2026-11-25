@@ -9,8 +9,8 @@ Collect everything that says where an entity is in its life:
 - Status enums and `state` columns.
 - Boolean flags, such as `is_published` or `archived`.
 - Nullable timestamps, such as `completed_at`, where null means "has not happened".
-- External state: a third party's view (bank, PSP, card scheme), another service's copy, a cache, a queue.
-- **Time.** Records valid for a period (leases, tokens, offers, mandates, reservations) change state when the clock passes, with no code writing anything. Find what acts on expiry: a cron job, a check at read time, or nothing.
+- External state: a third-party API's view, another service's copy, a cache, a queue.
+- **Time.** Records valid for a period (leases, tokens, invites, trials, reservations) change state when the clock passes, with no code writing anything. Find what acts on expiry: a cron job, a check at read time, or nothing.
 - **Deletion.** A hard delete is a move to a "gone" state. It can strand references, queued jobs, and webhooks.
 
 The real state is the product of all of these. Note the combinations that the code assumes cannot happen, such as `completed_at` set while `status = 'queued'`.

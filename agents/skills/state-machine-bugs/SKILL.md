@@ -1,6 +1,6 @@
 ---
 name: state-machine-bugs
-description: Hunt interleaving bugs (lost updates, double processing, stuck records) in an implicit state machine by extracting it from the code, modeling it in TLA+, and confirming each counterexample with a failing test. Use when asked to find races in a lifecycle with several writers, non-atomic steps, or retries across systems (payments, queues, webhooks, syncs, workflows), or to "find bugs with TLA+". Not for one race a targeted test can answer.
+description: Hunt interleaving bugs (lost updates, double processing, stuck records) in an implicit state machine by extracting it from the code, modeling it in TLA+, and confirming each counterexample with a failing test. Use when asked to find races in a lifecycle with several writers, non-atomic steps, or retries across systems (queues, webhooks, syncs, workflows), or to "find bugs with TLA+". Not for one race a targeted test can answer.
 ---
 
 # Hunt state-machine bugs
@@ -19,7 +19,7 @@ The hunt reports. Ask the user before you change product code, commit a spec, or
 
 ## 1. Scope
 
-Pick one bounded machine: a status field, a queue consumer, a multi-step workflow, a retry loop, a sync between two systems, a deploy or migration. When the user points at a whole repo, list candidates and rank them by the cost of a bug: money movement, external side effects that cannot be undone, and several concurrent writers come first. Tell the user which machine you picked and why.
+Pick one bounded machine: a status field, a queue consumer, a multi-step workflow, a retry loop, a sync between two systems, a deploy or migration. When the user points at a whole repo, list candidates and rank them by the cost of a bug: data loss, external side effects that cannot be undone, and several concurrent writers come first. Tell the user which machine you picked and why.
 
 Try the cheap checks first. Read the transaction and lock boundaries, check the queue's delivery semantics (at-least-once? ordered per key?), or write one test that forces the suspected interleaving. Continue to a model only when the interleavings are too many to settle by hand.
 
@@ -38,7 +38,7 @@ Write a TLA+ spec that mirrors the **code**, not the design doc. Where the code 
 - One action per transition, with its `file:line` in a comment.
 - Split each non-atomic read-check-write into separate actions with a program-counter value between them. This is what lets TLC find the interleaving.
 - Model the environment as actions: crash between two writes, duplicate delivery, reorder, timeout that actually succeeded, expiry, delete.
-- Write each rule the business depends on as an INVARIANT: at most one worker runs a job, money is never moved twice, a deleted record is never written to. For data loss, keep a history variable of everything the system ever held, and assert that nothing in it is lost.
+- Write each rule the business depends on as an INVARIANT: at most one worker runs a job, a message is never processed twice, a deleted record is never written to. For data loss, keep a history variable of everything the system ever held, and assert that nothing in it is lost.
 - Keep constants tiny: 2 entities, 2 actors, at most 2 retries. Most race bugs need only 2 actors.
 - Model each guard that a past fix added (a lock, a version check, an idempotency key) as a boolean constant, so that you can switch it off. Search git history and migrations for them.
 
@@ -75,7 +75,7 @@ A TLC trace is a bug in the model. Write a failing test that replays it in the r
 
 - Trace: <numbered steps in plain words>
 - Code: <file:line for each step>
-- Impact: <what goes wrong for users, money, or data>
+- Impact: <what goes wrong for users or data>
 - Repro: <test name, or why it could not be reproduced>
 - Fix idea: <smallest change that closes the trace>
 
