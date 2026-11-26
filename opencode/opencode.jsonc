@@ -3,6 +3,9 @@
   "shell": "/bin/zsh",
   "update": "notify",
   "formatter": true,
+  "experimental": {
+    "full_codemode": true,
+  },
   "compaction": {
     "auto": true,
     "background": true,
