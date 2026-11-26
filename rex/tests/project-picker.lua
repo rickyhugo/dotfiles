@@ -29,66 +29,40 @@ local function sh(script_text, ...)
 	return (result.stdout:gsub("\n$", ""))
 end
 
-local function fail_call(code)
-	return nil, "request failed (status=404 code=" .. code .. ")"
-end
-
 local function install(env)
 	env = env or {}
 	local fake = {
 		calls = {},
-		log = {},
 		actions = {},
 		binds = {},
 		queued = {},
 		created = {},
-		focused = {},
+		windows = {},
 		prompts = {},
 		exec_runs = {},
-		session_list = env.sessions or {},
-		views = env.views or {},
-		processes = env.processes or {},
 	}
 	local handlers = {
 		["session.attach_all"] = function(args)
 			assert(args.event_scope == "session", "no block event subscription")
 			fake.subscribed = true
-			return { sessions = fake.session_list }
-		end,
-		["server.status"] = function()
-			return { host_id = "host" }
+			return { sessions = env.sessions or {} }
 		end,
 		["session.view"] = function(args)
-			if not fake.subscribed then
-				return fail_call("conflict")
-			end
-			local view = fake.views[args.session_id]
-			if view == nil then
-				return fail_call("session_not_found")
-			end
-			return view
-		end,
-		["block.method"] = function(args)
-			assert(args.method == "process", "unexpected block method " .. tostring(args.method))
-			local cwd = fake.processes[args.block_id]
-			if not cwd then
-				return fail_call("not_found")
-			end
-			return { foreground = { cwd = cwd } }
+			assert(fake.subscribed, "session.view needs session.attach_all first")
+			return assert((env.views or {})[args.session_id], "unexpected session.view " .. args.session_id)
 		end,
 		["session.create"] = function(args)
 			fake.created[#fake.created + 1] = args
 			return { session_id = "session:new" }
 		end,
-		["session.focus_block"] = function(args)
-			fake.focused[#fake.focused + 1] = args
-			return { revision = 1 }
+		["session.new_window"] = function(args)
+			fake.windows[#fake.windows + 1] = args
+			return { window_id = "window:new" }
 		end,
 	}
 	rawset(_G, "rex", {
 		call = function(method, args)
 			fake.calls[#fake.calls + 1] = method
-			fake.log[#fake.log + 1] = method
 			local handler = assert(handlers[method], "unexpected rex.call " .. method)
 			return handler(args)
 		end,
@@ -103,7 +77,6 @@ local function install(env)
 		},
 		client = {
 			queue = function(action, args)
-				fake.log[#fake.log + 1] = "queue:" .. action
 				fake.queued[#fake.queued + 1] = { action = action, args = args }
 			end,
 		},
@@ -152,18 +125,6 @@ local function titles(spec)
 	return table.concat(shown, "|")
 end
 
-local function view_with(layers, window_id)
-	return { windows = { { window_id = window_id or "window:1", layers = layers } } }
-end
-
-local function terminal(block_id, extra)
-	local block = { block_id = block_id, flavor = TERM, host_id = "host" }
-	for key, value in pairs(extra or {}) do
-		block[key] = value
-	end
-	return block
-end
-
 local function expect(condition, message)
 	if not condition then
 		error(message, 2)
@@ -173,24 +134,6 @@ end
 local function expect_equal(actual, expected, message)
 	if actual ~= expected then
 		error(string.format("%s: expected %s, got %s", message or "mismatch", tostring(expected), tostring(actual)), 2)
-	end
-end
-
-local function count(list, value)
-	local total = 0
-	for _, item in ipairs(list) do
-		if item == value then
-			total = total + 1
-		end
-	end
-	return total
-end
-
-local function position(fake, method)
-	for index, entry in ipairs(fake.log) do
-		if entry == method then
-			return index
-		end
 	end
 end
 
@@ -214,9 +157,9 @@ local function test(name, fn)
 	tests[#tests + 1] = { name = name, fn = fn }
 end
 
-local function open(fake, roots, ctx)
+local function open(fake, roots)
 	require("project-picker").setup({ roots = roots })
-	return fake.actions.project_picker.run(ctx or { session_id = "session:a", client_id = "client:app" }, {})
+	return fake.actions.project_picker.run({ session_id = "session:a", client_id = "client:app" }, {})
 end
 
 test("Ctrl+t f opens the project picker and Ctrl+t d opens the built-in session switcher", function()
@@ -244,8 +187,16 @@ test("the prompt is titled, lists repositories by path, and cancelling does noth
 	expect_equal(spec.items[2].id, zebra, "repository ID is its path")
 	expect_equal(#fake.prompts, 1, "one prompt")
 	expect_equal(#fake.queued + #fake.created, 0, "nothing selected")
-	expect_equal(#fake.calls, 0, "no session scan on cancel")
+	expect_equal(#fake.calls, 0, "no session lookup on cancel")
 	expect_equal(#fake.exec_runs, 1, "one process lists the repositories")
+end)
+
+test("a root that starts with a tilde is searched under the home directory", function()
+	local fake = install()
+	open(fake, { "~/no-such-picker-root", "/absolute/root" })
+	local argv = fake.exec_runs[1]
+	expect_equal(argv[#argv - 1], os.getenv("HOME") .. "/no-such-picker-root", "tilde root")
+	expect_equal(argv[#argv], "/absolute/root", "absolute root")
 end)
 
 test("the scan finds a root, its children and grandchildren, and nothing hidden or deeper", function()
@@ -284,145 +235,59 @@ test("no repositories is explained in the prompt", function()
 	expect_equal(fake.prompts[1].placeholder, "No Git repositories found under the configured roots", "empty")
 end)
 
-test("a repository without an existing session gets a new one", function()
+test("a project without a session gets a new one in its directory", function()
 	local root = new_root()
 	local repo = make_repo(root, "fresh")
 	local fake = install({
-		sessions = { { session_id = "session:a", label = "a" } },
-		views = { ["session:a"] = view_with({ { kind = "tiled", blocks = { terminal("block:a") } } }) },
-		processes = { ["block:a"] = tmp },
+		sessions = {
+			{ session_id = "session:a", label = "fresh-2" },
+			{ session_id = "session:b", label = "FRESH" },
+			{ session_id = "session:c" },
+		},
 		pick = choose("fresh"),
 	})
 	open(fake, { root })
-	expect_equal(#fake.prompts, 1, "one prompt")
 	expect_equal(#fake.created, 1, "created sessions")
 	expect_equal(fake.created[1].label, "fresh", "label")
+	expect_equal(fake.created[1].initial_windows[1].layout.block.flavor, TERM, "terminal")
 	expect_equal(fake.created[1].initial_windows[1].layout.block.options.cwd, repo, "cwd")
+	expect_equal(#fake.queued, 1, "one queued action")
 	expect_equal(fake.queued[1].action, "session.select", "queued action")
 	expect_equal(fake.queued[1].args.session_id, "session:new", "selected session")
+	expect_equal(#fake.windows, 0, "no extra window")
 end)
 
-test("an existing session is reused from session.view snapshots without joining each session", function()
+test("the session that has the project's label is selected again", function()
 	local root = new_root()
-	local repo = make_repo(root, "reuse")
-	local fake = install({
-		sessions = {
-			{ session_id = "session:gone", label = "gone" },
-			{ session_id = "session:decoys", label = "decoys" },
-			{ session_id = "session:other", label = "other" },
-			{ session_id = "session:hit", label = "hit" },
-		},
-		views = {
-			["session:decoys"] = view_with({
-				{ kind = "floating", blocks = { terminal("block:floating") } },
-				{
-					kind = "tiled",
-					blocks = {
-						terminal("block:remote", { host_id = "elsewhere" }),
-						terminal("block:browser", { flavor = "com.superlogical.browser" }),
-						terminal("block:vanished"),
-					},
-				},
-			}),
-			["session:other"] = view_with({ { kind = "tiled", blocks = { terminal("block:other") } } }),
-			["session:hit"] = view_with({ { kind = "tiled", blocks = { terminal("block:hit") } } }, "window:hit"),
-		},
-		processes = {
-			["block:floating"] = repo,
-			["block:remote"] = repo,
-			["block:browser"] = repo,
-			["block:other"] = tmp,
-			["block:hit"] = repo .. "/nested/..",
-		},
-		pick = choose("reuse"),
-	})
-	sh('mkdir -p "$1/nested"', repo)
-	open(fake, { root })
-	expect_equal(#fake.created, 0, "created sessions")
-	expect_equal(fake.queued[1].args.session_id, "session:hit", "reused session")
-	expect_equal(fake.queued[1].args.window_id, "window:hit", "reused window")
-	expect_equal(fake.focused[1].block_id, "block:hit", "reused terminal focused")
-	expect_equal(count(fake.calls, "session.attach"), 0, "session.attach calls")
-	expect_equal(count(fake.calls, "session.view"), 4, "one view per session")
-end)
-
-test("the invoking session is searched first and its own terminal counts as reuse", function()
-	local root = new_root()
-	local repo = make_repo(root, "current")
+	make_repo(root, "again")
 	local fake = install({
 		sessions = {
 			{ session_id = "session:other", label = "other" },
-			{ session_id = "session:mine", label = "mine" },
+			{ session_id = "session:again", label = "again" },
 		},
-		views = {
-			["session:other"] = view_with({ { kind = "tiled", blocks = { terminal("block:other") } } }),
-			["session:mine"] = view_with({ { kind = "tiled", blocks = { terminal("block:mine") } } }, "window:mine"),
-		},
-		processes = { ["block:other"] = repo, ["block:mine"] = repo },
-		pick = choose("current"),
+		views = { ["session:again"] = { windows = { { window_id = "window:1" } } } },
+		pick = choose("again"),
 	})
-	open(fake, { root }, { session_id = "session:mine", block_id = "block:mine", client_id = "client:app" })
+	open(fake, { root })
 	expect_equal(#fake.created, 0, "created sessions")
-	expect_equal(fake.focused[1].block_id, "block:mine", "invoking terminal reused")
-	expect_equal(fake.queued[1].args.session_id, "session:mine", "invoking session selected")
-	expect_equal(count(fake.calls, "session.view"), 1, "search stops at the invoking session")
+	expect_equal(#fake.windows, 0, "its windows stay as they are")
+	expect_equal(fake.queued[1].args.session_id, "session:again", "selected session")
 end)
 
-test("a repository open in an inactive window selects that window, not the active one", function()
+test("a project session that lost every window gets a terminal in the project", function()
 	local root = new_root()
-	local repo = make_repo(root, "inactive")
+	local repo = make_repo(root, "hollow")
 	local fake = install({
-		sessions = { { session_id = "session:work", label = "work" } },
-		views = {
-			["session:work"] = {
-				active_window_id = "window:active",
-				windows = {
-					{ window_id = "window:active", layers = { { kind = "tiled", blocks = { terminal("block:a") } } } },
-					{ window_id = "window:repo", layers = { { kind = "tiled", blocks = { terminal("block:repo") } } } },
-				},
-			},
-		},
-		processes = { ["block:a"] = tmp, ["block:repo"] = repo },
-		pick = choose("inactive"),
+		sessions = { { session_id = "session:hollow", label = "hollow" } },
+		views = { ["session:hollow"] = { windows = {} } },
+		pick = choose("hollow"),
 	})
 	open(fake, { root })
-	expect_equal(fake.queued[1].args.window_id, "window:repo", "selected window")
-	expect_equal(fake.focused[1].session_id, "session:work", "focus in that session")
-	expect_equal(fake.focused[1].block_id, "block:repo", "focused block")
-	expect(position(fake, "session.focus_block") < position(fake, "queue:session.select"), "focus before select")
-end)
-
-test("only floating or remote blocks in a repository do not count as reuse", function()
-	local root = new_root()
-	local repo = make_repo(root, "decoy-only")
-	local fake = install({
-		sessions = { { session_id = "session:decoys", label = "decoys" } },
-		views = {
-			["session:decoys"] = view_with({
-				{ kind = "floating", blocks = { terminal("block:floating") } },
-				{ kind = "tiled", blocks = { terminal("block:remote", { host_id = "elsewhere" }) } },
-			}),
-		},
-		processes = { ["block:floating"] = repo, ["block:remote"] = repo },
-		pick = choose("decoy-only"),
-	})
-	open(fake, { root })
-	expect_equal(#fake.created, 1, "created sessions")
-end)
-
-test("a repository removed while the prompt is open fails without selecting anything", function()
-	local root = new_root()
-	local repo = make_repo(root, "doomed")
-	local fake = install({
-		pick = function(spec)
-			sh('rm -rf "$1"', repo)
-			return spec.items[1].id
-		end,
-	})
-	local ok, err = pcall(open, fake, { root })
-	expect(not ok, "the action fails")
-	expect(tostring(err):find("no longer available: " .. repo, 1, true), "the missing repository is named")
-	expect_equal(#fake.created + #fake.queued, 0, "nothing selected")
+	expect_equal(#fake.created, 0, "created sessions")
+	expect_equal(#fake.windows, 1, "new windows")
+	expect_equal(fake.windows[1].session_id, "session:hollow", "window in the project session")
+	expect_equal(fake.windows[1].layout.block.options.cwd, repo, "cwd")
+	expect_equal(fake.queued[1].args.session_id, "session:hollow", "selected session")
 end)
 
 test("unsafe directory names keep their exact path and label", function()
@@ -439,9 +304,13 @@ test("equal repository names are told apart by their parent directory", function
 	local root = new_root()
 	make_repo(root, "one/api")
 	local second = make_repo(root, "two/api")
-	local fake = install({ pick = choose("two/api") })
+	make_repo(root, "two/web")
+	local fake = install({
+		sessions = { { session_id = "session:first", label = "one/api" } },
+		pick = choose("two/api"),
+	})
 	open(fake, { root })
-	expect_equal(titles(fake.prompts[1]), "one/api|two/api", "items")
+	expect_equal(titles(fake.prompts[1]), "one/api|two/api|web", "items")
 	expect_equal(fake.created[1].label, "two/api", "session label")
 	expect_equal(fake.created[1].initial_windows[1].layout.block.options.cwd, second, "cwd")
 end)
