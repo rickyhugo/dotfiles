@@ -1,7 +1,5 @@
 local M = {}
 local terminal = "com.superlogical.terminal.shell"
--- Repository paths are absolute, so this ID cannot collide with one.
-local rescan = "rescan"
 local empty = "No Git repositories found under the configured roots"
 
 local function exec(argv, options)
@@ -172,60 +170,68 @@ local function open_repository(path, label, current_session)
 	return true
 end
 
-local function discover(index, roots, prior)
-	local view, err = index.open(roots, true)
-	if view then
-		return view, view.notice
+-- A repository is a root or a visible directory at most two levels below it.
+local function repositories(roots)
+	local argv = {
+		"/bin/sh",
+		"-c",
+		[[
+for root; do
+  for marker in "$root"/.git "$root"/*/.git "$root"/*/*/.git; do
+    if [ -e "$marker" ]; then printf '%s\0' "${marker%/.git}"; fi
+  done
+done
+]],
+		"rex-picker-scan",
+	}
+	for _, root in ipairs(roots) do
+		argv[#argv + 1] = root
 	end
-	return prior, "Refresh failed. " .. err
+	-- Rex's Lua fails on a call chain in a for header, so the output gets a local.
+	local output = exec(argv).stdout
+	local paths, seen = {}, {}
+	for path in output:gmatch("([^%z]+)%z") do
+		if not seen[path] then
+			seen[path] = true
+			paths[#paths + 1] = path
+		end
+	end
+	table.sort(paths)
+	local entries = {}
+	for position, path in ipairs(paths) do
+		entries[position] = { path = path, label = path:match("[^/]+$") }
+	end
+	return entries
 end
 
 function M.setup(config)
 	local roots = roots_snapshot(config.roots)
-	local index = require("repository-index")
-	-- Keys the cache once here, so opening the picker starts no process.
-	index.cached(roots)
 	rex.action({
 		name = "project_picker",
 		title = "Open Project Session",
 		category = "Session",
 		keywords = "project repo git picker",
 		run = function(ctx)
-			local view = index.cached(roots)
-			local notice = view.notice
-			if #view.entries == 0 then
-				view, notice = discover(index, roots, view)
+			local entries = repositories(roots)
+			local labels, items, titles = repository_labels(entries), {}, {}
+			for position, entry in ipairs(entries) do
+				items[position] = { id = entry.path, title = labels[position], icon = "folder" }
+				titles[entry.path] = labels[position]
 			end
 			-- rex.ui.pick fails under pcall, so nothing here may wrap it.
-			while true do
-				local labels, items, titles = repository_labels(view.entries), {}, {}
-				for position, entry in ipairs(view.entries) do
-					items[position] = { id = entry.path, title = labels[position], icon = "folder" }
-					titles[entry.path] = labels[position]
-				end
-				items[#items + 1] = { id = rescan, title = "Rescan repositories", icon = "clock" }
-				local choice, reason, detail = rex.ui.pick({
-					title = "Open Project Session",
-					placeholder = notice or (#view.entries == 0 and empty) or "Filter projects",
-					items = items,
-				})
-				if choice == nil then
-					if reason == "cancelled" or reason == "timeout" or reason == "busy" then
-						return
-					end
-					error(
-						"Project picker cannot prompt: " .. tostring(reason) .. (detail and (": " .. detail) or ""),
-						0
-					)
-				end
-				if choice == rescan then
-					view, notice = discover(index, roots, view)
-				elseif open_repository(choice, titles[choice], ctx.session_id) then
+			local choice, reason, detail = rex.ui.pick({
+				title = "Open Project Session",
+				placeholder = #entries == 0 and empty or "Filter projects",
+				items = items,
+			})
+			if choice == nil then
+				if reason == "cancelled" or reason == "timeout" or reason == "busy" then
 					return
-				else
-					view = index.cached(roots)
-					notice = "Repository is no longer available. Rescan to update this list."
 				end
+				error("Project picker cannot prompt: " .. tostring(reason) .. (detail and (": " .. detail) or ""), 0)
+			end
+			if not open_repository(choice, titles[choice], ctx.session_id) then
+				error("Repository is no longer available: " .. choice, 0)
 			end
 		end,
 	})

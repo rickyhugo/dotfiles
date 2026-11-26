@@ -6,7 +6,6 @@ local rex_dir = script:gsub("/tests/[^/]*$", "")
 package.path = rex_dir .. "/?.lua;" .. package.path
 
 local TERM = "com.superlogical.terminal.shell"
-local RESCAN = "Rescan repositories"
 
 local function quote(text)
 	return "'" .. text:gsub("'", "'\\''") .. "'"
@@ -46,8 +45,6 @@ local function install(env)
 		focused = {},
 		prompts = {},
 		exec_runs = {},
-		cached_calls = 0,
-		open_calls = 0,
 		session_list = env.sessions or {},
 		views = env.views or {},
 		processes = env.processes or {},
@@ -127,17 +124,6 @@ local function install(env)
 		end,
 	})
 	package.loaded["project-picker"] = nil
-	package.loaded["repository-index"] = {
-		cached = function()
-			fake.cached_calls = fake.cached_calls + 1
-			return env.views_sequence and env.views_sequence[fake.cached_calls] or env.index_view or { entries = {} }
-		end,
-		open = function(roots, fresh)
-			fake.open_calls = fake.open_calls + 1
-			assert(fresh, "the picker only asks for a fresh list")
-			return assert(env.open, "unexpected repository discovery")(roots, fresh)
-		end,
-	}
 	return fake
 end
 
@@ -209,8 +195,16 @@ local function position(fake, method)
 end
 
 local tmp = sh('cd "$(mktemp -d)" && pwd -P')
-local function make_repo(name)
-	local path = tmp .. "/" .. name
+local root_count = 0
+local function new_root()
+	root_count = root_count + 1
+	local path = tmp .. "/root" .. root_count
+	sh('mkdir -p "$1"', path)
+	return path
+end
+
+local function make_repo(root, name)
+	local path = name == "" and root or (root .. "/" .. name)
 	sh('mkdir -p "$1" && git init -q "$1"', path)
 	return path
 end
@@ -220,8 +214,8 @@ local function test(name, fn)
 	tests[#tests + 1] = { name = name, fn = fn }
 end
 
-local function open(fake, ctx)
-	require("project-picker").setup({ roots = { tmp } })
+local function open(fake, roots, ctx)
+	require("project-picker").setup({ roots = roots })
 	return fake.actions.project_picker.run(ctx or { session_id = "session:a", client_id = "client:app" }, {})
 end
 
@@ -234,96 +228,72 @@ test("Ctrl+t f opens the project picker and Ctrl+t d opens the built-in session 
 	expect(not fake.actions.session_picker, "no custom session picker")
 	expect_equal(fake.binds["ctrl+t>1"], "client.tab.goto", "prefixed tab key")
 	expect(not fake.binds["cmd+1"], "cmd+1 stays the Rex default")
+	expect_equal(#fake.exec_runs, 0, "loading the config starts no process")
 end)
 
-test("the prompt is titled, lists repositories then rescan, and cancelling does nothing", function()
-	local repo = make_repo("cancel")
-	local fake = install({ index_view = { entries = { { path = repo, label = "cancel" } } } })
-	open(fake)
+test("the prompt is titled, lists repositories by path, and cancelling does nothing", function()
+	local root = new_root()
+	local zebra, apple = make_repo(root, "zebra"), make_repo(root, "apple")
+	local fake = install()
+	open(fake, { root })
 	local spec = fake.prompts[1]
 	expect_equal(spec.title, "Open Project Session", "title")
 	expect_equal(spec.placeholder, "Filter projects", "placeholder")
-	expect_equal(titles(spec), "cancel|" .. RESCAN, "items")
-	expect_equal(spec.items[1].id, repo, "repository ID is its path")
+	expect_equal(titles(spec), "apple|zebra", "items")
+	expect_equal(spec.items[1].id, apple, "repository ID is its path")
+	expect_equal(spec.items[2].id, zebra, "repository ID is its path")
 	expect_equal(#fake.prompts, 1, "one prompt")
 	expect_equal(#fake.queued + #fake.created, 0, "nothing selected")
 	expect_equal(#fake.calls, 0, "no session scan on cancel")
+	expect_equal(#fake.exec_runs, 1, "one process lists the repositories")
 end)
 
-test("a warm cache opens without discovery and shows its notice", function()
-	local fake = install({
-		index_view = { entries = { { path = tmp .. "/cached", label = "cached" } }, notice = "cached notice" },
-	})
-	open(fake)
-	expect_equal(fake.prompts[1].placeholder, "cached notice", "cached notice")
-	expect_equal(titles(fake.prompts[1]), "cached|" .. RESCAN, "cached row")
-	expect_equal(fake.open_calls, 0, "no discovery")
-	expect_equal(#fake.exec_runs, 0, "no process on the warm path")
+test("the scan finds a root, its children and grandchildren, and nothing hidden or deeper", function()
+	local root = new_root()
+	make_repo(root, "")
+	make_repo(root, "child")
+	make_repo(root, "group/grandchild")
+	make_repo(root, "group/deep/too-deep")
+	make_repo(root, ".hidden/secret")
+	make_repo(root, "child/.cache/vendored")
+	sh('mkdir -p "$1/plain" "$1/linked" && printf "gitdir: elsewhere\n" > "$1/linked/.git"', root)
+	local fake = install()
+	open(fake, { root })
+	local found = {}
+	for position, item in ipairs(fake.prompts[1].items) do
+		found[position] = item.id:sub(#root + 1)
+	end
+	expect_equal(table.concat(found, "|"), "|/child|/group/grandchild|/linked", "repositories")
 end)
 
-test("an empty cache discovers repositories before prompting", function()
-	local fake = install({
-		index_view = { entries = {}, notice = "Discovering Git repositories..." },
-		open = function()
-			return { entries = { { path = tmp .. "/found", label = "found" } } }
-		end,
-	})
-	open(fake)
-	expect_equal(fake.open_calls, 1, "one discovery")
-	expect_equal(titles(fake.prompts[1]), "found|" .. RESCAN, "discovered row")
-	expect_equal(fake.prompts[1].placeholder, "Filter projects", "discovery notice cleared")
+test("every open scans again, and missing or repeated roots are harmless", function()
+	local root = new_root()
+	make_repo(root, "first")
+	local fake = install()
+	open(fake, { root, tmp .. "/no-such-root", root })
+	expect_equal(titles(fake.prompts[1]), "first", "one row per repository")
+	make_repo(root, "second")
+	fake.actions.project_picker.run({ session_id = "session:a" }, {})
+	expect_equal(titles(fake.prompts[2]), "first|second", "a new repository shows on the next open")
 end)
 
-test("no repositories and failed discovery are both explained in the prompt", function()
-	local fake = install({
-		open = function()
-			return { entries = {} }
-		end,
-	})
-	open(fake)
+test("no repositories is explained in the prompt", function()
+	local fake = install()
+	open(fake, { new_root() })
+	expect_equal(#fake.prompts[1].items, 0, "no rows")
 	expect_equal(fake.prompts[1].placeholder, "No Git repositories found under the configured roots", "empty")
-	fake = install({
-		open = function()
-			return nil, "boom"
-		end,
-	})
-	open(fake)
-	expect_equal(fake.prompts[1].placeholder, "Refresh failed. boom", "failure")
-	expect_equal(titles(fake.prompts[1]), RESCAN, "rescan stays available")
-end)
-
-test("rescan rediscovers and prompts again, keeping the cached list on failure", function()
-	local attempts = 0
-	local fake = install({
-		index_view = { entries = { { path = tmp .. "/old", label = "old" } } },
-		open = function()
-			attempts = attempts + 1
-			if attempts == 1 then
-				return { entries = { { path = tmp .. "/new", label = "new" } } }
-			end
-			return nil, "boom"
-		end,
-		pick = choose(RESCAN, RESCAN),
-	})
-	open(fake)
-	expect_equal(#fake.prompts, 3, "prompts")
-	expect_equal(titles(fake.prompts[2]), "new|" .. RESCAN, "rescanned rows")
-	expect_equal(fake.prompts[2].placeholder, "Filter projects", "no notice after a good rescan")
-	expect_equal(titles(fake.prompts[3]), "new|" .. RESCAN, "previous rows kept")
-	expect_equal(fake.prompts[3].placeholder, "Refresh failed. boom", "failure notice")
-	expect_equal(#fake.queued + #fake.created, 0, "nothing selected")
 end)
 
 test("a repository without an existing session gets a new one", function()
-	local repo = make_repo("fresh")
+	local root = new_root()
+	local repo = make_repo(root, "fresh")
 	local fake = install({
 		sessions = { { session_id = "session:a", label = "a" } },
 		views = { ["session:a"] = view_with({ { kind = "tiled", blocks = { terminal("block:a") } } }) },
 		processes = { ["block:a"] = tmp },
-		index_view = { entries = { { path = repo, label = "fresh" } } },
 		pick = choose("fresh"),
 	})
-	open(fake)
+	open(fake, { root })
 	expect_equal(#fake.prompts, 1, "one prompt")
 	expect_equal(#fake.created, 1, "created sessions")
 	expect_equal(fake.created[1].label, "fresh", "label")
@@ -333,7 +303,8 @@ test("a repository without an existing session gets a new one", function()
 end)
 
 test("an existing session is reused from session.view snapshots without joining each session", function()
-	local repo = make_repo("reuse")
+	local root = new_root()
+	local repo = make_repo(root, "reuse")
 	local fake = install({
 		sessions = {
 			{ session_id = "session:gone", label = "gone" },
@@ -363,11 +334,10 @@ test("an existing session is reused from session.view snapshots without joining 
 			["block:other"] = tmp,
 			["block:hit"] = repo .. "/nested/..",
 		},
-		index_view = { entries = { { path = repo, label = "reuse" } } },
 		pick = choose("reuse"),
 	})
 	sh('mkdir -p "$1/nested"', repo)
-	open(fake)
+	open(fake, { root })
 	expect_equal(#fake.created, 0, "created sessions")
 	expect_equal(fake.queued[1].args.session_id, "session:hit", "reused session")
 	expect_equal(fake.queued[1].args.window_id, "window:hit", "reused window")
@@ -377,7 +347,8 @@ test("an existing session is reused from session.view snapshots without joining 
 end)
 
 test("the invoking session is searched first and its own terminal counts as reuse", function()
-	local repo = make_repo("current")
+	local root = new_root()
+	local repo = make_repo(root, "current")
 	local fake = install({
 		sessions = {
 			{ session_id = "session:other", label = "other" },
@@ -388,10 +359,9 @@ test("the invoking session is searched first and its own terminal counts as reus
 			["session:mine"] = view_with({ { kind = "tiled", blocks = { terminal("block:mine") } } }, "window:mine"),
 		},
 		processes = { ["block:other"] = repo, ["block:mine"] = repo },
-		index_view = { entries = { { path = repo, label = "current" } } },
 		pick = choose("current"),
 	})
-	open(fake, { session_id = "session:mine", block_id = "block:mine", client_id = "client:app" })
+	open(fake, { root }, { session_id = "session:mine", block_id = "block:mine", client_id = "client:app" })
 	expect_equal(#fake.created, 0, "created sessions")
 	expect_equal(fake.focused[1].block_id, "block:mine", "invoking terminal reused")
 	expect_equal(fake.queued[1].args.session_id, "session:mine", "invoking session selected")
@@ -399,7 +369,8 @@ test("the invoking session is searched first and its own terminal counts as reus
 end)
 
 test("a repository open in an inactive window selects that window, not the active one", function()
-	local repo = make_repo("inactive")
+	local root = new_root()
+	local repo = make_repo(root, "inactive")
 	local fake = install({
 		sessions = { { session_id = "session:work", label = "work" } },
 		views = {
@@ -412,10 +383,9 @@ test("a repository open in an inactive window selects that window, not the activ
 			},
 		},
 		processes = { ["block:a"] = tmp, ["block:repo"] = repo },
-		index_view = { entries = { { path = repo, label = "inactive" } } },
 		pick = choose("inactive"),
 	})
-	open(fake)
+	open(fake, { root })
 	expect_equal(fake.queued[1].args.window_id, "window:repo", "selected window")
 	expect_equal(fake.focused[1].session_id, "session:work", "focus in that session")
 	expect_equal(fake.focused[1].block_id, "block:repo", "focused block")
@@ -423,7 +393,8 @@ test("a repository open in an inactive window selects that window, not the activ
 end)
 
 test("only floating or remote blocks in a repository do not count as reuse", function()
-	local repo = make_repo("decoy-only")
+	local root = new_root()
+	local repo = make_repo(root, "decoy-only")
 	local fake = install({
 		sessions = { { session_id = "session:decoys", label = "decoys" } },
 		views = {
@@ -433,97 +404,71 @@ test("only floating or remote blocks in a repository do not count as reuse", fun
 			}),
 		},
 		processes = { ["block:floating"] = repo, ["block:remote"] = repo },
-		index_view = { entries = { { path = repo, label = "decoy-only" } } },
 		pick = choose("decoy-only"),
 	})
-	open(fake)
+	open(fake, { root })
 	expect_equal(#fake.created, 1, "created sessions")
 end)
 
-test("a stale selection prompts again with the current list and a notice", function()
-	local missing = tmp .. "/never-created"
-	local repo = make_repo("alive")
+test("a repository removed while the prompt is open fails without selecting anything", function()
+	local root = new_root()
+	local repo = make_repo(root, "doomed")
 	local fake = install({
-		views_sequence = {
-			{ entries = { { path = missing, label = "never-created" } } },
-			{ entries = { { path = missing, label = "never-created" } } },
-			{ entries = { { path = repo, label = "alive" } } },
-		},
-		pick = choose("never-created"),
+		pick = function(spec)
+			sh('rm -rf "$1"', repo)
+			return spec.items[1].id
+		end,
 	})
-	open(fake)
-	expect_equal(#fake.prompts, 2, "prompts")
-	expect(fake.prompts[2].placeholder:find("no longer available", 1, true), "notice")
-	expect_equal(titles(fake.prompts[2]), "alive|" .. RESCAN, "current entries")
+	local ok, err = pcall(open, fake, { root })
+	expect(not ok, "the action fails")
+	expect(tostring(err):find("no longer available: " .. repo, 1, true), "the missing repository is named")
 	expect_equal(#fake.created + #fake.queued, 0, "nothing selected")
 end)
 
 test("unsafe directory names keep their exact path and label", function()
+	local root = new_root()
 	local name = 'it\'s {a} "b"\ttab\nnewline'
-	local repo = make_repo(name)
-	local fake = install({
-		index_view = { entries = { { path = repo, label = name } } },
-		pick = choose(name),
-	})
-	open(fake)
+	local repo = make_repo(root, name)
+	local fake = install({ pick = choose(name) })
+	open(fake, { root })
 	expect_equal(fake.created[1].initial_windows[1].layout.block.options.cwd, repo, "exact path")
 	expect_equal(fake.created[1].label, name, "exact label")
 end)
 
 test("equal repository names are told apart by their parent directory", function()
-	local first, second = make_repo("one/api"), make_repo("two/api")
-	local fake = install({
-		index_view = { entries = { { path = first, label = "api" }, { path = second, label = "api" } } },
-		pick = choose("two/api"),
-	})
-	open(fake)
-	expect_equal(titles(fake.prompts[1]), "one/api|two/api|" .. RESCAN, "items")
+	local root = new_root()
+	make_repo(root, "one/api")
+	local second = make_repo(root, "two/api")
+	local fake = install({ pick = choose("two/api") })
+	open(fake, { root })
+	expect_equal(titles(fake.prompts[1]), "one/api|two/api", "items")
 	expect_equal(fake.created[1].label, "two/api", "session label")
 	expect_equal(fake.created[1].initial_windows[1].layout.block.options.cwd, second, "cwd")
 end)
 
 test("an unanswered prompt ends quietly and an unavailable one fails with its reason", function()
+	local root = new_root()
+	make_repo(root, "x")
 	for _, reason in ipairs({ "cancelled", "timeout", "busy" }) do
 		local fake = install({
-			index_view = { entries = { { path = tmp .. "/x", label = "x" } } },
 			pick = function()
 				return nil, reason
 			end,
 		})
-		open(fake)
+		open(fake, { root })
 		expect_equal(#fake.prompts, 1, reason .. " prompts once")
 	end
 	for reason, detail in pairs({ unsupported = false, no_client = false, failed = "the app closed" }) do
 		local fake = install({
-			index_view = { entries = { { path = tmp .. "/x", label = "x" } } },
 			pick = function()
 				return nil, reason, detail or nil
 			end,
 		})
-		local ok, err = pcall(open, fake)
+		local ok, err = pcall(open, fake, { root })
 		expect(not ok, reason .. " fails the action")
 		expect(tostring(err):find(reason, 1, true), reason .. " is reported")
 		expect(not detail or tostring(err):find(detail, 1, true), "detail is reported")
 	end
-end)
-
-test("the real repository cache is keyed once at setup", function()
-	local fake = install()
-	package.loaded["repository-index"] = assert(loadfile(rex_dir .. "/repository-index.lua"))()
-	local roots = { tmp .. "/context-prime-only" }
-	require("project-picker").setup({ roots = roots })
-	local function hashes()
-		local total = 0
-		for _, argv in ipairs(fake.exec_runs) do
-			if argv[1] == "/usr/bin/shasum" then
-				total = total + 1
-			end
-		end
-		return total
-	end
-	expect_equal(hashes(), 1, "one setup hash")
-	require("repository-index").cached(roots)
-	expect_equal(hashes(), 1, "later reads reuse the key")
 end)
 
 local failures = 0
