@@ -1,6 +1,7 @@
 # dotfiles
 
-My machines, but make it reproducible. Configs for `nvim`, `kitty`, `starship`, `btop`, `k9s`, `lazygit`, `lazydocker`, `vscode`, `opencode`, `ccmux`, `fsh`, `worktrunk` — plus `wallpapers` so it looks good while breaking.
+My machines, but make it reproducible. Configs for `nvim`, `kitty`, a native `zsh`
+prompt with vi-mode, `btop`, `k9s`, `lazygit`, `lazydocker`, `vscode`, `opencode`, `ccmux`, `fsh`, `worktrunk` — plus `wallpapers` so it looks good while breaking.
 
 No snowflakes here: one bootstrap to rule both OSes, powered by `mise`.
 

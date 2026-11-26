@@ -141,9 +141,6 @@ function _native_prompt_precmd {
 	_native_prompt_mode
 }
 
-# Allow switching from Starship in an existing shell as well as in new tabs.
-add-zsh-hook -d precmd prompt_starship_precmd
-add-zsh-hook -d preexec prompt_starship_preexec
 add-zsh-hook precmd _native_prompt_precmd
 add-zsh-hook preexec _native_prompt_preexec
 typeset -gaU zvm_after_select_vi_mode_commands
