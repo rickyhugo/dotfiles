@@ -79,13 +79,12 @@ rex.bind(prefix .. ">-", "pane.split", { direction = "down" })
 
 -- apps
 rex.bind(prefix .. ">f", "project_picker")
-rex.bind(prefix .. ">d", "session_picker")
+rex.bind(prefix .. ">d", "session.switch")
 bind_app(prefix .. ">s", "lazygit")
 bind_app(prefix .. ">a", "opencode", { os.getenv("HOME") .. "/.opencode/bin" })
 
--- tabs
+-- tabs (cmd+1..9 is a Rex default)
 for i = 1, 9 do
-	rex.bind("cmd+" .. i, "client.tab.goto", { index = i })
 	rex.bind(prefix .. ">" .. i, "client.tab.goto", { index = i })
 end
 rex.bind("cmd+0", "client.tab.goto", { index = -1 })
